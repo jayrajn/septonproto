@@ -268,6 +268,23 @@ export interface EnterpriseMemorySnapshot {
   decisionPatterns: DecisionPattern[];
 }
 
+export interface StoredEvidenceCounts {
+  total: number;
+  approved: number;
+  rejected: number;
+}
+
+export interface PatternLearningStatus {
+  capabilityId: CapabilityId;
+  storedObserved: number;
+  eligibleApprovedCount: number;
+  threshold: number;
+  thresholdReached: boolean;
+  state: "waiting_for_threshold" | "no_promotable_approval" | "promoted_to_memory";
+  selectedEvidenceId?: string;
+  promotedPatternId?: string;
+}
+
 export interface CapabilityLearningState {
   approvedEvidenceIds: string[];
   patterns: DecisionPattern[];
@@ -276,6 +293,12 @@ export interface CapabilityLearningState {
 
 export interface LearningState {
   byCapability: Partial<Record<CapabilityId, CapabilityLearningState>>;
+}
+
+export interface EvidenceStoreState {
+  storedEvidence: DecisionEvidencePackage[];
+  storedCounts: StoredEvidenceCounts;
+  patternLearningStatusByCapability: Partial<Record<CapabilityId, PatternLearningStatus>>;
 }
 
 export interface SeptonRun {

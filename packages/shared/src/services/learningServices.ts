@@ -5,10 +5,15 @@ import type {
   DecisionEvidencePackage,
   DecisionPattern,
   EnterpriseMemorySnapshot,
+  EvidenceStoreState,
   KnowledgeBase,
   LearningSignal,
   LearningState,
+  PatternLearningStatus,
+  StoredEvidenceCounts,
 } from "../domain/types";
+
+const PATTERN_THRESHOLD = 3;
 
 export interface LearningArtifacts {
   learningSignals: LearningSignal[];
@@ -17,6 +22,7 @@ export interface LearningArtifacts {
 }
 
 export interface StoredLearningResult extends LearningArtifacts {
+  evidenceStoreState: EvidenceStoreState;
   learningState: LearningState;
   memorySnapshot: EnterpriseMemorySnapshot;
 }
@@ -24,6 +30,18 @@ export interface StoredLearningResult extends LearningArtifacts {
 export function createEmptyLearningState(): LearningState {
   return {
     byCapability: {},
+  };
+}
+
+export function createEmptyEvidenceStoreState(): EvidenceStoreState {
+  return {
+    storedEvidence: [],
+    storedCounts: {
+      total: 0,
+      approved: 0,
+      rejected: 0,
+    },
+    patternLearningStatusByCapability: {},
   };
 }
 
@@ -38,33 +56,78 @@ export function buildMemorySnapshot(knowledgeBase: KnowledgeBase, learningState:
   };
 }
 
-export function storeApprovedLearning(
+export function storeDecisionOutcome(
   evidence: DecisionEvidencePackage,
   knowledgeBase: KnowledgeBase,
   learningState: LearningState,
+  evidenceStoreState: EvidenceStoreState,
 ): StoredLearningResult {
-  const artifacts = buildLearningArtifacts(evidence);
-  const capabilityId = evidence.capabilityId;
-  const existingState = getCapabilityLearningState(learningState, capabilityId);
+  const nextEvidenceStoreState = storeEvidence(evidenceStoreState, evidence);
+  const nextLearningState = cloneLearningState(learningState);
+  const learningSignals: LearningSignal[] = [];
+  let patternArtifacts: DecisionPattern[] = [];
+  let retrievalHints: ContextRetrievalHint[] = [];
 
-  const nextCapabilityState: CapabilityLearningState = {
-    approvedEvidenceIds: dedupeStrings([...existingState.approvedEvidenceIds, evidence.id]),
-    patterns: mergePatterns(existingState.patterns, artifacts.patternArtifacts),
-    retrievalHints: mergeHints(existingState.retrievalHints, artifacts.retrievalHints),
-  };
+  if (evidence.approvalStatus === "approved") {
+    const approvedArtifacts = buildLearningArtifacts(evidence);
+    retrievalHints = approvedArtifacts.retrievalHints;
+    learningSignals.push(...approvedArtifacts.learningSignals.filter((signal) => signal.service === "Context Retrieval Learning"));
 
-  const nextLearningState: LearningState = {
-    byCapability: {
-      ...learningState.byCapability,
-      [capabilityId]: nextCapabilityState,
-    },
-  };
+    const existingState = getCapabilityLearningState(nextLearningState, evidence.capabilityId);
+    nextLearningState.byCapability[evidence.capabilityId] = {
+      approvedEvidenceIds: dedupeStrings([...existingState.approvedEvidenceIds, evidence.id]),
+      patterns: existingState.patterns,
+      retrievalHints: mergeHints(existingState.retrievalHints, approvedArtifacts.retrievalHints),
+    };
+  }
+
+  const promotion = maybePromotePatternToMemory(
+    evidence,
+    nextLearningState,
+    nextEvidenceStoreState,
+  );
+
+  if (promotion.promotedPattern) {
+    patternArtifacts = [promotion.promotedPattern];
+    learningSignals.push({
+      service: "Pattern Learning Service",
+      update: "Threshold reached. Pattern Learning Service promoted one approved evidence package into enterprise memory.",
+      effect: "Curated Enterprise Memory now contains one validated decision pattern for this capability.",
+    });
+  } else if (nextEvidenceStoreState.storedCounts.total >= PATTERN_THRESHOLD) {
+    learningSignals.push({
+      service: "Pattern Learning Service",
+      update:
+        promotion.status?.state === "no_promotable_approval"
+          ? "Threshold reached, but there is no approved decision available to promote into memory."
+          : "Threshold reached, but this capability already has a promoted pattern in enterprise memory.",
+      effect: "Decision Evidence Store retains all outcomes, while enterprise memory remains limited to approved promoted patterns.",
+    });
+  }
+
+  const refreshedEvidenceStoreState = refreshPatternStatuses(nextEvidenceStoreState, nextLearningState);
 
   return {
-    ...artifacts,
+    evidenceStoreState: refreshedEvidenceStoreState,
     learningState: nextLearningState,
+    learningSignals,
+    patternArtifacts,
+    retrievalHints,
     memorySnapshot: buildMemorySnapshot(knowledgeBase, nextLearningState),
   };
+}
+
+export function getCapabilityLearningState(
+  learningState: LearningState,
+  capabilityId: CapabilityId,
+): CapabilityLearningState {
+  return (
+    learningState.byCapability[capabilityId] ?? {
+      approvedEvidenceIds: [],
+      patterns: [],
+      retrievalHints: [],
+    }
+  );
 }
 
 function buildLearningArtifacts(evidence: DecisionEvidencePackage): LearningArtifacts {
@@ -112,8 +175,8 @@ function buildLearningArtifacts(evidence: DecisionEvidencePackage): LearningArti
         },
         {
           service: "Pattern Learning Service",
-          update: "Extracted a validated inventory rebalancing pattern from the approved evidence package.",
-          effect: "Curated Enterprise Memory now stores the pattern for future promotion-readiness checks.",
+          update: "Prepared an inventory rebalancing pattern candidate from the approved evidence package.",
+          effect: "It can be promoted to enterprise memory once the evidence-store threshold is reached.",
         },
       ],
       patternArtifacts: [pattern],
@@ -161,8 +224,8 @@ function buildLearningArtifacts(evidence: DecisionEvidencePackage): LearningArti
       },
       {
         service: "Pattern Learning Service",
-        update: "Extracted a validated promotion-readiness decision pattern from the approved evidence package.",
-        effect: "Curated Enterprise Memory now stores the pattern for future August promotion readiness checks.",
+        update: "Prepared a promotion-readiness pattern candidate from the approved evidence package.",
+        effect: "It can be promoted to enterprise memory once the evidence-store threshold is reached.",
       },
     ],
     patternArtifacts: [pattern],
@@ -170,17 +233,151 @@ function buildLearningArtifacts(evidence: DecisionEvidencePackage): LearningArti
   };
 }
 
-export function getCapabilityLearningState(
+function maybePromotePatternToMemory(
+  evidence: DecisionEvidencePackage,
   learningState: LearningState,
+  evidenceStoreState: EvidenceStoreState,
+): { promotedPattern: DecisionPattern | null; status: PatternLearningStatus | null } {
+  const status = buildPatternLearningStatus(evidence.capabilityId, evidenceStoreState, learningState);
+  if (!status.thresholdReached || status.state !== "promoted_to_memory" || status.promotedPatternId) {
+    return {
+      promotedPattern: null,
+      status,
+    };
+  }
+
+  const latestApprovedEvidence = evidenceStoreState.storedEvidence
+    .filter((item) => item.capabilityId === evidence.capabilityId && item.approvalStatus === "approved")
+    .sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0];
+
+  if (!latestApprovedEvidence) {
+    return {
+      promotedPattern: null,
+      status: {
+        ...status,
+        state: "no_promotable_approval",
+      },
+    };
+  }
+
+  const promotedPattern = buildLearningArtifacts(latestApprovedEvidence).patternArtifacts[0];
+  const existingState = getCapabilityLearningState(learningState, evidence.capabilityId);
+  learningState.byCapability[evidence.capabilityId] = {
+    approvedEvidenceIds: existingState.approvedEvidenceIds,
+    retrievalHints: existingState.retrievalHints,
+    patterns: mergePatterns(existingState.patterns, [promotedPattern]),
+  };
+
+  return {
+    promotedPattern,
+    status: {
+      ...status,
+      selectedEvidenceId: latestApprovedEvidence.id,
+      promotedPatternId: promotedPattern.id,
+    },
+  };
+}
+
+function refreshPatternStatuses(evidenceStoreState: EvidenceStoreState, learningState: LearningState): EvidenceStoreState {
+  const allCapabilities = new Set<CapabilityId>([
+    "root_cause_analysis",
+    "inventory_optimization",
+  ]);
+
+  return {
+    ...evidenceStoreState,
+    storedCounts: calculateStoredCounts(evidenceStoreState.storedEvidence),
+    patternLearningStatusByCapability: Array.from(allCapabilities).reduce<
+      Partial<Record<CapabilityId, PatternLearningStatus>>
+    >((statuses, capabilityId) => {
+      statuses[capabilityId] = buildPatternLearningStatus(capabilityId, evidenceStoreState, learningState);
+      return statuses;
+    }, {}),
+  };
+}
+
+function buildPatternLearningStatus(
   capabilityId: CapabilityId,
-): CapabilityLearningState {
-  return (
-    learningState.byCapability[capabilityId] ?? {
-      approvedEvidenceIds: [],
-      patterns: [],
-      retrievalHints: [],
-    }
-  );
+  evidenceStoreState: EvidenceStoreState,
+  learningState: LearningState,
+): PatternLearningStatus {
+  const storedObserved = evidenceStoreState.storedCounts.total;
+  const eligibleApprovedEvidence = evidenceStoreState.storedEvidence
+    .filter((item) => item.capabilityId === capabilityId && item.approvalStatus === "approved")
+    .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+  const promotedPattern = getCapabilityLearningState(learningState, capabilityId).patterns[0];
+  const thresholdReached = storedObserved >= PATTERN_THRESHOLD;
+
+  if (!thresholdReached) {
+    return {
+      capabilityId,
+      storedObserved,
+      eligibleApprovedCount: eligibleApprovedEvidence.length,
+      threshold: PATTERN_THRESHOLD,
+      thresholdReached,
+      state: "waiting_for_threshold",
+    };
+  }
+
+  if (!eligibleApprovedEvidence.length) {
+    return {
+      capabilityId,
+      storedObserved,
+      eligibleApprovedCount: 0,
+      threshold: PATTERN_THRESHOLD,
+      thresholdReached,
+      state: "no_promotable_approval",
+    };
+  }
+
+  return {
+    capabilityId,
+    storedObserved,
+    eligibleApprovedCount: eligibleApprovedEvidence.length,
+    threshold: PATTERN_THRESHOLD,
+    thresholdReached,
+    state: "promoted_to_memory",
+    selectedEvidenceId: eligibleApprovedEvidence[0].id,
+    promotedPatternId: promotedPattern?.id,
+  };
+}
+
+function storeEvidence(evidenceStoreState: EvidenceStoreState, evidence: DecisionEvidencePackage): EvidenceStoreState {
+  const storedEvidence = [
+    evidence,
+    ...evidenceStoreState.storedEvidence.filter((item) => item.id !== evidence.id),
+  ];
+
+  return {
+    ...evidenceStoreState,
+    storedEvidence,
+    storedCounts: calculateStoredCounts(storedEvidence),
+  };
+}
+
+function calculateStoredCounts(storedEvidence: DecisionEvidencePackage[]): StoredEvidenceCounts {
+  return {
+    total: storedEvidence.length,
+    approved: storedEvidence.filter((evidence) => evidence.approvalStatus === "approved").length,
+    rejected: storedEvidence.filter((evidence) => evidence.approvalStatus === "rejected").length,
+  };
+}
+
+function cloneLearningState(learningState: LearningState): LearningState {
+  return {
+    byCapability: Object.fromEntries(
+      Object.entries(learningState.byCapability).map(([capabilityId, state]) => [
+        capabilityId,
+        state
+          ? {
+              approvedEvidenceIds: [...state.approvedEvidenceIds],
+              patterns: state.patterns.map((pattern) => ({ ...pattern, appliedInCurrentRun: false })),
+              retrievalHints: state.retrievalHints.map((hint) => ({ ...hint, appliedInCurrentRun: false })),
+            }
+          : state,
+      ]),
+    ) as LearningState["byCapability"],
+  };
 }
 
 function mergePatterns(existingPatterns: DecisionPattern[], nextPatterns: DecisionPattern[]): DecisionPattern[] {

@@ -42,7 +42,7 @@ export function rejectEvidencePackage(evidence: DecisionEvidencePackage, reviewe
     ...evidence,
     outcome: "rejected",
     approvalStatus: "rejected",
-    storageStatus: "not_stored",
+    storageStatus: "stored",
     reviewedBy: reviewer,
     reviewedAt: new Date().toISOString(),
   };
