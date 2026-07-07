@@ -42,6 +42,79 @@ const pipeline = [
   "Learning",
 ];
 
+const architectureStatuses = [
+  {
+    layer: "Enterprise Systems",
+    status: "Simulated",
+    summary: "Mock SAP, BigQuery, Salesforce, ServiceNow, and SharePoint records drive the demo.",
+  },
+  {
+    layer: "Enterprise Onboarding",
+    status: "Not started",
+    summary: "Connector auth, permission setup, and sync policy setup are not modeled yet.",
+  },
+  {
+    layer: "Platform Configuration",
+    status: "Partial",
+    summary: "Capability contracts exist; model registry, glossary, feature flags, and approvals are still placeholders.",
+  },
+  {
+    layer: "Data Sync & Ingestion",
+    status: "Simulated",
+    summary: "Static records are returned with connector status, sync mode, freshness, and source counts.",
+  },
+  {
+    layer: "Knowledge Processing",
+    status: "Implemented",
+    summary: "Raw records become graph nodes, graph edges, and vector-searchable documents.",
+  },
+  {
+    layer: "Curated Enterprise Memory",
+    status: "Partial",
+    summary: "The memory layer exists in runtime only; persistent facts, events, and learned patterns come next.",
+  },
+  {
+    layer: "Live Data Access",
+    status: "Simulated",
+    summary: "Freshness-sensitive inventory, supplier, incident, and promotion records are selected from local data.",
+  },
+  {
+    layer: "Context Engine",
+    status: "Implemented",
+    summary: "Context bundles include semantic ranking, graph paths, live data, ignored context, and retrieval trace.",
+  },
+  {
+    layer: "Context Intent",
+    status: "Partial",
+    summary: "Questions route to structured intent by simple rules; richer entity and timeframe extraction is still needed.",
+  },
+  {
+    layer: "Decision Engine",
+    status: "Partial",
+    summary: "Recommendations are generated from retrieved context, with some scenario-specific logic still in place.",
+  },
+  {
+    layer: "Consume",
+    status: "Partial",
+    summary: "The web workspace shows the decision flow; feedback capture and approvals are still missing.",
+  },
+  {
+    layer: "Decision Evidence Store",
+    status: "Implemented",
+    summary: "Each run creates an in-memory evidence package with context, reasoning, confidence, and outcome.",
+  },
+  {
+    layer: "Learning Services",
+    status: "Simulated",
+    summary: "Retrieval and pattern learning are visible as signals but do not yet update future runs.",
+  },
+  {
+    layer: "Governance & Control",
+    status: "Partial",
+    summary: "Confidence, lineage, audit, RBAC, and HITL are shown, but enforcement is mostly simulated.",
+  },
+];
+
 function formatLabel(value: string): string {
   return value.replace(/_/g, " ");
 }
@@ -135,7 +208,49 @@ export function App() {
         <EvidencePanel run={run} />
         <LearningPanel run={run} />
       </section>
+
+      <ArchitectureStatusPanel />
     </main>
+  );
+}
+
+function ArchitectureStatusPanel() {
+  const counts = architectureStatuses.reduce<Record<string, number>>((totals, item) => {
+    totals[item.status] = (totals[item.status] ?? 0) + 1;
+    return totals;
+  }, {});
+
+  return (
+    <section className="panel architecture-panel">
+      <div className="panel-heading">
+        <Network size={18} />
+        <h2>Architecture Status</h2>
+      </div>
+      <div className="architecture-summary">
+        <p>
+          Maps the MVP against the target architecture so the team can see what is real, simulated, partial, and still
+          missing.
+        </p>
+        <div className="status-counts" aria-label="Architecture status summary">
+          {["Implemented", "Partial", "Simulated", "Not started"].map((status) => (
+            <span className={`status-chip ${statusClass(status)}`} key={status}>
+              {status}: {counts[status] ?? 0}
+            </span>
+          ))}
+        </div>
+      </div>
+      <div className="architecture-grid">
+        {architectureStatuses.map((item) => (
+          <article className="architecture-card" key={item.layer}>
+            <div>
+              <strong>{item.layer}</strong>
+              <span className={`status-chip ${statusClass(item.status)}`}>{item.status}</span>
+            </div>
+            <p>{item.summary}</p>
+          </article>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -373,4 +488,8 @@ function Metric({ icon, label, value }: { icon: ReactNode; label: string; value:
       </div>
     </div>
   );
+}
+
+function statusClass(status: string): string {
+  return status.toLowerCase().replace(/\s+/g, "-");
 }
