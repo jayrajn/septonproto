@@ -1,5 +1,19 @@
 export type EnterpriseSource = "SAP" | "BigQuery" | "Salesforce" | "ServiceNow" | "SharePoint";
 
+export type UserRole = "COO" | "Supply Chain Manager" | "Marketing Manager" | "Finance Analyst";
+
+export type AccessTag =
+  | "executive"
+  | "sales"
+  | "supply_chain"
+  | "marketing"
+  | "digital"
+  | "operations"
+  | "external"
+  | "finance_restricted"
+  | "employee_detail"
+  | "pii";
+
 export type ContextType =
   | "sales_kpi"
   | "inventory"
@@ -22,6 +36,8 @@ export interface RawRecord {
   city?: string;
   week?: string;
   businessUnit?: string;
+  accessTags?: AccessTag[];
+  requiredRoles?: UserRole[];
   payload: Record<string, string | number | boolean | string[]>;
   text: string;
 }
@@ -98,6 +114,36 @@ export interface DecisionIntent {
   entities: string[];
 }
 
+export interface UserContext {
+  id: string;
+  name: string;
+  role: UserRole;
+}
+
+export interface RolePolicy {
+  role: UserRole;
+  description: string;
+  allowedSources: EnterpriseSource[];
+  allowedContextTypes: ContextType[];
+  deniedAccessTags: AccessTag[];
+}
+
+export interface RestrictedRecord {
+  id: string;
+  title: string;
+  source: EnterpriseSource;
+  type: ContextType;
+  reason: string;
+}
+
+export interface AccessControlReport {
+  user: UserContext;
+  policy: RolePolicy;
+  allowedRecordIds: string[];
+  restrictedRecords: RestrictedRecord[];
+  trace: string[];
+}
+
 export interface ContextHit {
   record: RawRecord;
   score: number;
@@ -117,6 +163,7 @@ export interface ContextBundle {
   graphPaths: GraphPath[];
   liveData: RawRecord[];
   ignoredContextTypes: ContextType[];
+  accessControl: AccessControlReport;
   retrievalTrace: string[];
 }
 

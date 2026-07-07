@@ -130,6 +130,7 @@ export function App() {
   const [question, setQuestion] = useState(defaultQuestion);
   const [lastQuestion, setLastQuestion] = useState(defaultQuestion);
   const [runCount, setRunCount] = useState(1);
+  const [showRbacPanel, setShowRbacPanel] = useState(false);
   const [showAuditTrail, setShowAuditTrail] = useState(false);
   const [showHitlApproval, setShowHitlApproval] = useState(false);
   const run = useMemo(() => runSepton(lastQuestion), [lastQuestion, runCount]);
@@ -160,7 +161,14 @@ export function App() {
         </div>
         <div className="governance">
           <ShieldCheck size={18} />
-          <span>RBAC</span>
+          <button
+            type="button"
+            className={showRbacPanel ? "governance-button active" : "governance-button"}
+            aria-expanded={showRbacPanel}
+            onClick={() => setShowRbacPanel((isVisible) => !isVisible)}
+          >
+            RBAC
+          </button>
           <span>Lineage</span>
           <span>Model governance</span>
           <button
@@ -182,6 +190,7 @@ export function App() {
         </div>
       </header>
 
+      {showRbacPanel && <RbacPanel run={run} />}
       {showHitlApproval && <HitlApprovalNotice run={run} />}
       {showAuditTrail && <AuditTrailPanel run={run} runCount={runCount} />}
 
@@ -237,6 +246,61 @@ export function App() {
 
       <ArchitectureStatusPanel />
     </main>
+  );
+}
+
+function RbacPanel({ run }: { run: SeptonRun }) {
+  const access = run.contextBundle.accessControl;
+  const allowedSources = access.policy.allowedSources.join(", ");
+  const allowedContext = access.policy.allowedContextTypes.map(formatLabel).join(", ");
+
+  return (
+    <section className="panel rbac-panel" aria-label="Role based access control">
+      <div className="panel-heading">
+        <LockKeyhole size={18} />
+        <h2>Role Based Access Control</h2>
+      </div>
+      <div className="rbac-summary">
+        <Metric icon={<ShieldCheck size={17} />} label="Active role" value={access.user.role} />
+        <Metric icon={<Database size={17} />} label="Allowed records" value={access.allowedRecordIds.length} />
+        <Metric icon={<LockKeyhole size={17} />} label="Restricted records" value={access.restrictedRecords.length} />
+      </div>
+      <div className="rbac-policy">
+        <article>
+          <strong>Policy definition</strong>
+          <p>{access.policy.description}</p>
+        </article>
+        <article>
+          <strong>Allowed systems</strong>
+          <p>{allowedSources}</p>
+        </article>
+        <article>
+          <strong>Allowed context</strong>
+          <p>{allowedContext}</p>
+        </article>
+      </div>
+      <h3>Restricted before retrieval</h3>
+      <div className="restricted-list">
+        {access.restrictedRecords.length === 0 ? (
+          <article className="restricted-record">
+            <strong>No records blocked</strong>
+            <p>All current context passed the active role policy.</p>
+          </article>
+        ) : (
+          access.restrictedRecords.map((record) => (
+            <article className="restricted-record" key={record.id}>
+              <div>
+                <strong>{record.title}</strong>
+                <span>{record.source}</span>
+              </div>
+              <p>
+                {formatLabel(record.type)} · {record.reason}
+              </p>
+            </article>
+          ))
+        )}
+      </div>
+    </section>
   );
 }
 
