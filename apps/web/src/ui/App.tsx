@@ -346,6 +346,39 @@ function CollapsibleRuntimeSection({
   );
 }
 
+function NestedDetailSection({
+  title,
+  summary,
+  children,
+}: {
+  title: string;
+  summary: string;
+  children: ReactNode;
+}) {
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  return (
+    <section className="nested-detail">
+      <button
+        type="button"
+        className="nested-detail-header"
+        aria-expanded={isExpanded}
+        onClick={() => setIsExpanded((value) => !value)}
+      >
+        <span>
+          <strong>{title}</strong>
+          <small>{summary}</small>
+        </span>
+        <span className="nested-detail-action">
+          {isExpanded ? "Hide" : "Show"}
+          {isExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+        </span>
+      </button>
+      {isExpanded && <div className="nested-detail-body">{children}</div>}
+    </section>
+  );
+}
+
 function EmptyDecisionState({ selectedCapability }: { selectedCapability: string | null }) {
   return (
     <section className="answer-panel empty-state">
@@ -555,6 +588,44 @@ function KnowledgeProcessingPanel({ run }: { run: SeptonRun }) {
         <Metric icon={<GitBranch size={17} />} label="Graph nodes" value={run.knowledgeBase.nodes.length} />
         <Metric icon={<Network size={17} />} label="Graph edges" value={run.knowledgeBase.edges.length} />
       </div>
+      <div className="nested-detail-list">
+        <NestedDetailSection title="Semantic documents" summary={`${run.knowledgeBase.documents.length} searchable documents created`}>
+          <div className="detail-list">
+            {run.knowledgeBase.documents.map((document) => (
+              <article className="detail-row" key={document.id}>
+                <strong>{document.title}</strong>
+                <p>
+                  {document.source} · {formatLabel(document.contextType)} · {document.tokens.length} indexed tokens
+                </p>
+              </article>
+            ))}
+          </div>
+        </NestedDetailSection>
+        <NestedDetailSection title="Graph nodes" summary={`${run.knowledgeBase.nodes.length} entities created`}>
+          <div className="detail-list">
+            {run.knowledgeBase.nodes.map((node) => (
+              <article className="detail-row" key={node.id}>
+                <strong>{node.label}</strong>
+                <p>
+                  {formatLabel(node.type)} · {node.id}
+                </p>
+              </article>
+            ))}
+          </div>
+        </NestedDetailSection>
+        <NestedDetailSection title="Graph edges" summary={`${run.knowledgeBase.edges.length} relationships created`}>
+          <div className="detail-list">
+            {run.knowledgeBase.edges.map((edge) => (
+              <article className="detail-row" key={`${edge.from}-${edge.to}-${edge.label}`}>
+                <strong>{edge.label}</strong>
+                <p>
+                  {edge.from} → {edge.to} · weight {edge.weight}
+                </p>
+              </article>
+            ))}
+          </div>
+        </NestedDetailSection>
+      </div>
     </section>
   );
 }
@@ -578,6 +649,46 @@ function EnterpriseMemoryPanel({ run }: { run: SeptonRun }) {
         <Metric icon={<Layers3 size={17} />} label="Entities" value={run.knowledgeBase.nodes.length} />
         <Metric icon={<GitBranch size={17} />} label="Relationships" value={run.knowledgeBase.edges.length} />
         <Metric icon={<FileSearch size={17} />} label="Semantic memory items" value={run.knowledgeBase.documents.length} />
+      </div>
+      <div className="nested-detail-list">
+        <NestedDetailSection title="Stored entities" summary={`${run.knowledgeBase.nodes.length} entity nodes in memory`}>
+          <div className="detail-list">
+            {run.knowledgeBase.nodes.map((node) => (
+              <article className="detail-row" key={node.id}>
+                <strong>{node.label}</strong>
+                <p>
+                  {formatLabel(node.type)} · {Object.entries(node.properties)
+                    .map(([key, value]) => `${formatLabel(key)}: ${String(value)}`)
+                    .join(" · ")}
+                </p>
+              </article>
+            ))}
+          </div>
+        </NestedDetailSection>
+        <NestedDetailSection title="Stored relationships" summary={`${run.knowledgeBase.edges.length} relationships in memory`}>
+          <div className="detail-list">
+            {run.knowledgeBase.edges.map((edge) => (
+              <article className="detail-row" key={`${edge.from}-${edge.to}-${edge.label}`}>
+                <strong>{edge.label}</strong>
+                <p>
+                  {edge.from} → {edge.to}
+                </p>
+              </article>
+            ))}
+          </div>
+        </NestedDetailSection>
+        <NestedDetailSection title="Stored semantic memory" summary={`${run.knowledgeBase.documents.length} semantic memory references`}>
+          <div className="detail-list">
+            {run.knowledgeBase.documents.map((document) => (
+              <article className="detail-row" key={document.id}>
+                <strong>{document.title}</strong>
+                <p>
+                  {document.source} · {formatLabel(document.contextType)} · source record {document.sourceRecordId}
+                </p>
+              </article>
+            ))}
+          </div>
+        </NestedDetailSection>
       </div>
     </section>
   );
