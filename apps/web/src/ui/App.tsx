@@ -8,6 +8,7 @@ import {
   Database,
   FileSearch,
   GitBranch,
+  HardDrive,
   Layers3,
   LockKeyhole,
   Network,
@@ -18,9 +19,19 @@ import {
   Sparkles,
 } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
-import type { CapabilityId, ContextHit, GraphPath, SeptonRun } from "../../../../packages/shared/src/domain/types";
+import type {
+  CapabilityId,
+  ContextHit,
+  ContextRetrievalHint,
+  DecisionPattern,
+  GraphEdge,
+  GraphNode,
+  GraphPath,
+  SeptonRun,
+  VectorDocument,
+} from "../../../../packages/shared/src/domain/types";
 import { approveEvidencePackage, rejectEvidencePackage } from "../../../../packages/shared/src/services/evidenceStore";
-import { learnFromEvidence } from "../../../../packages/shared/src/services/learningServices";
+import { buildLearningArtifacts } from "../../../../packages/shared/src/services/learningServices";
 import { runSepton } from "../../../../packages/shared/src/services/septonRuntime";
 
 const defaultQuestion =
@@ -66,10 +77,14 @@ export function App() {
   function approveRecommendation() {
     if (!run) return;
     const approvedEvidence = approveEvidencePackage(run.evidence);
+    const learningArtifacts = buildLearningArtifacts(approvedEvidence, run.knowledgeBase);
     setRun({
       ...run,
       evidence: approvedEvidence,
-      learningSignals: learnFromEvidence(approvedEvidence),
+      learningSignals: learningArtifacts.learningSignals,
+      patternArtifacts: learningArtifacts.patternArtifacts,
+      retrievalHints: learningArtifacts.retrievalHints,
+      memorySnapshot: learningArtifacts.memorySnapshot,
     });
   }
 
@@ -80,6 +95,12 @@ export function App() {
       ...run,
       evidence: rejectedEvidence,
       learningSignals: [],
+      patternArtifacts: [],
+      retrievalHints: [],
+      memorySnapshot: {
+        ...run.memorySnapshot,
+        decisionPatterns: [],
+      },
     });
   }
 
@@ -209,7 +230,7 @@ function RuntimeFlow({ run }: { run: SeptonRun }) {
         step="5"
         title="Curated Enterprise Memory"
         icon={<Database size={18} />}
-        summary={`${run.knowledgeBase.nodes.length} entities, ${run.knowledgeBase.edges.length} relationships, and reusable context stored`}
+        summary={`${run.memorySnapshot.entities.length} entities, ${run.memorySnapshot.relationships.length} relationships, and ${run.memorySnapshot.decisionPatterns.length} decision patterns stored`}
       >
         <EnterpriseMemoryPanel run={run} />
       </CollapsibleRuntimeSection>
@@ -227,7 +248,7 @@ function RuntimeFlow({ run }: { run: SeptonRun }) {
         step="7"
         title="Context Engine"
         icon={<FileSearch size={18} />}
-        summary={`${run.contextBundle.vectorHits.length} ranked context items selected for the decision`}
+        summary={`${run.contextBundle.vectorHits.length} ranked context items selected and ${run.retrievalHints.length} learned retrieval hints available`}
       >
         <ContextPanel run={run} />
       </CollapsibleRuntimeSection>
@@ -243,15 +264,6 @@ function RuntimeFlow({ run }: { run: SeptonRun }) {
 
       <CollapsibleRuntimeSection
         step="9"
-        title="Consume"
-        icon={<Sparkles size={18} />}
-        summary="Web app displays the recommendation and captures approve/reject feedback"
-      >
-        <ConsumePanel run={run} />
-      </CollapsibleRuntimeSection>
-
-      <CollapsibleRuntimeSection
-        step="10"
         title="Decision Evidence Store"
         icon={<ShieldCheck size={18} />}
         summary={isStored ? "Evidence stored after approval" : "Evidence not stored yet"}
@@ -260,7 +272,7 @@ function RuntimeFlow({ run }: { run: SeptonRun }) {
       </CollapsibleRuntimeSection>
 
       <CollapsibleRuntimeSection
-        step="11A"
+        step="10A"
         title="Context Retrieval Learning"
         icon={<RefreshCcw size={18} />}
         summary={canLearn ? "Retrieval learning enabled from approved evidence" : "Retrieval learning paused until approval"}
@@ -269,7 +281,7 @@ function RuntimeFlow({ run }: { run: SeptonRun }) {
       </CollapsibleRuntimeSection>
 
       <CollapsibleRuntimeSection
-        step="11B"
+        step="10B"
         title="Pattern Learning Service"
         icon={<RefreshCcw size={18} />}
         summary={canLearn ? "Pattern learning enabled from approved evidence" : "Pattern learning paused until approval"}
@@ -542,6 +554,8 @@ function IngestionPanel({ run }: { run: SeptonRun }) {
 }
 
 function KnowledgeProcessingPanel({ run }: { run: SeptonRun }) {
+  const nodeGroups = groupNodesByType(run.knowledgeBase.nodes);
+
   return (
     <section className="panel">
       <div className="panel-heading">
@@ -563,40 +577,13 @@ function KnowledgeProcessingPanel({ run }: { run: SeptonRun }) {
       </div>
       <div className="nested-detail-list">
         <NestedDetailSection title="Semantic documents" summary={`${run.knowledgeBase.documents.length} searchable documents created`}>
-          <div className="detail-list">
-            {run.knowledgeBase.documents.map((document) => (
-              <article className="detail-row" key={document.id}>
-                <strong>{document.title}</strong>
-                <p>
-                  {document.source} · {formatLabel(document.contextType)} · {document.tokens.length} indexed tokens
-                </p>
-              </article>
-            ))}
-          </div>
+          <SemanticDocumentGraph documents={run.knowledgeBase.documents} />
         </NestedDetailSection>
         <NestedDetailSection title="Graph nodes" summary={`${run.knowledgeBase.nodes.length} entities created`}>
-          <div className="detail-list">
-            {run.knowledgeBase.nodes.map((node) => (
-              <article className="detail-row" key={node.id}>
-                <strong>{node.label}</strong>
-                <p>
-                  {formatLabel(node.type)} · {node.id}
-                </p>
-              </article>
-            ))}
-          </div>
+          <GraphNodeMatrix groups={nodeGroups} />
         </NestedDetailSection>
         <NestedDetailSection title="Graph edges" summary={`${run.knowledgeBase.edges.length} relationships created`}>
-          <div className="detail-list">
-            {run.knowledgeBase.edges.map((edge) => (
-              <article className="detail-row" key={`${edge.from}-${edge.to}-${edge.label}`}>
-                <strong>{edge.label}</strong>
-                <p>
-                  {edge.from} → {edge.to} · weight {edge.weight}
-                </p>
-              </article>
-            ))}
-          </div>
+          <GraphEdgeFlow edges={run.knowledgeBase.edges} nodes={run.knowledgeBase.nodes} />
         </NestedDetailSection>
       </div>
     </section>
@@ -604,6 +591,9 @@ function KnowledgeProcessingPanel({ run }: { run: SeptonRun }) {
 }
 
 function EnterpriseMemoryPanel({ run }: { run: SeptonRun }) {
+  const memory = run.memorySnapshot;
+  const entityGroups = groupNodesByType(memory.entities);
+
   return (
     <section className="panel">
       <div className="panel-heading">
@@ -619,48 +609,24 @@ function EnterpriseMemoryPanel({ run }: { run: SeptonRun }) {
         </p>
       </div>
       <div className="field-grid">
-        <Metric icon={<Layers3 size={17} />} label="Entities" value={run.knowledgeBase.nodes.length} />
-        <Metric icon={<GitBranch size={17} />} label="Relationships" value={run.knowledgeBase.edges.length} />
-        <Metric icon={<FileSearch size={17} />} label="Semantic memory items" value={run.knowledgeBase.documents.length} />
+        <Metric icon={<Layers3 size={17} />} label="Entities" value={memory.entities.length} />
+        <Metric icon={<GitBranch size={17} />} label="Relationships" value={memory.relationships.length} />
+        <Metric icon={<FileSearch size={17} />} label="Semantic memory items" value={memory.semanticMemory.length} />
+        <Metric icon={<HardDrive size={17} />} label="Decision patterns" value={memory.decisionPatterns.length} />
       </div>
+      <MemoryLoopDiagram evidenceId={run.evidence.id} patterns={memory.decisionPatterns} />
       <div className="nested-detail-list">
-        <NestedDetailSection title="Stored entities" summary={`${run.knowledgeBase.nodes.length} entity nodes in memory`}>
-          <div className="detail-list">
-            {run.knowledgeBase.nodes.map((node) => (
-              <article className="detail-row" key={node.id}>
-                <strong>{node.label}</strong>
-                <p>
-                  {formatLabel(node.type)} · {Object.entries(node.properties)
-                    .map(([key, value]) => `${formatLabel(key)}: ${String(value)}`)
-                    .join(" · ")}
-                </p>
-              </article>
-            ))}
-          </div>
+        <NestedDetailSection title="Stored entities" summary={`${memory.entities.length} entity nodes in memory`}>
+          <GraphNodeMatrix groups={entityGroups} />
         </NestedDetailSection>
-        <NestedDetailSection title="Stored relationships" summary={`${run.knowledgeBase.edges.length} relationships in memory`}>
-          <div className="detail-list">
-            {run.knowledgeBase.edges.map((edge) => (
-              <article className="detail-row" key={`${edge.from}-${edge.to}-${edge.label}`}>
-                <strong>{edge.label}</strong>
-                <p>
-                  {edge.from} → {edge.to}
-                </p>
-              </article>
-            ))}
-          </div>
+        <NestedDetailSection title="Stored relationships" summary={`${memory.relationships.length} relationships in memory`}>
+          <GraphEdgeFlow edges={memory.relationships} nodes={memory.entities} />
         </NestedDetailSection>
-        <NestedDetailSection title="Stored semantic memory" summary={`${run.knowledgeBase.documents.length} semantic memory references`}>
-          <div className="detail-list">
-            {run.knowledgeBase.documents.map((document) => (
-              <article className="detail-row" key={document.id}>
-                <strong>{document.title}</strong>
-                <p>
-                  {document.source} · {formatLabel(document.contextType)} · source record {document.sourceRecordId}
-                </p>
-              </article>
-            ))}
-          </div>
+        <NestedDetailSection title="Stored semantic memory" summary={`${memory.semanticMemory.length} semantic memory references`}>
+          <SemanticDocumentGraph documents={memory.semanticMemory} />
+        </NestedDetailSection>
+        <NestedDetailSection title="Stored decision patterns" summary={`${memory.decisionPatterns.length} learned patterns written back into memory`}>
+          <DecisionPatternMemoryView patterns={memory.decisionPatterns} />
         </NestedDetailSection>
       </div>
     </section>
@@ -693,30 +659,6 @@ function LiveDataAccessPanel({ run }: { run: SeptonRun }) {
             </div>
           </article>
         ))}
-      </div>
-    </section>
-  );
-}
-
-function ConsumePanel({ run }: { run: SeptonRun }) {
-  return (
-    <section className="panel">
-      <div className="panel-heading">
-        <Sparkles size={18} />
-        <h2>Consume</h2>
-      </div>
-      <div className="intent-result">
-        <p className="eyebrow">End-user experience</p>
-        <h3>Recommendation reviewed in the web app</h3>
-        <p>
-          The user sees the Decision Engine recommendation, reviews supporting context, and captures the approval or
-          rejection outcome before evidence is finalized.
-        </p>
-      </div>
-      <div className="field-grid">
-        <Metric icon={<Sparkles size={17} />} label="Recommendation" value="Visible" />
-        <Metric icon={<ShieldCheck size={17} />} label="Approval status" value={formatLabel(run.evidence.approvalStatus)} />
-        <Metric icon={<BadgeCheck size={17} />} label="Outcome capture" value={formatLabel(run.evidence.outcome)} />
       </div>
     </section>
   );
@@ -794,6 +736,16 @@ function ContextPanel({ run }: { run: SeptonRun }) {
           <ContextHitRow hit={hit} key={hit.record.id} topScore={topContextScore} />
         ))}
       </div>
+      <NestedDetailSection
+        title="What Context Engine reuses from learning"
+        summary={
+          run.retrievalHints.length > 0
+            ? `${run.retrievalHints.length} retrieval hint${run.retrievalHints.length === 1 ? "" : "s"} available for future runs`
+            : "No approved retrieval hints stored yet"
+        }
+      >
+        <RetrievalHintView hints={run.retrievalHints} />
+      </NestedDetailSection>
       <h3>Graph search used by Context Engine</h3>
       <GraphPanel paths={run.contextBundle.graphPaths} />
     </section>
@@ -940,13 +892,11 @@ function LearningPanel({ run, mode }: { run: SeptonRun; mode: "context" | "patte
         <h2>{serviceName}</h2>
       </div>
       {canLearn ? (
-        signals.map((signal) => (
-          <article className="learning-card" key={signal.service}>
-            <strong>{signal.service}</strong>
-            <p>{signal.update}</p>
-            <small>{signal.effect}</small>
-          </article>
-        ))
+        mode === "context" ? (
+          <ContextRetrievalLearningView evidenceId={run.evidence.id} hints={run.retrievalHints} signals={signals} />
+        ) : (
+          <PatternLearningView evidenceId={run.evidence.id} patterns={run.patternArtifacts} signals={signals} />
+        )
       ) : (
         <div className="learning-locked">
           <LockKeyhole size={18} />
@@ -972,6 +922,226 @@ function LearningPanel({ run, mode }: { run: SeptonRun; mode: "context" | "patte
         </>
       )}
     </section>
+  );
+}
+
+function groupNodesByType(nodes: GraphNode[]): Array<{ type: string; nodes: GraphNode[] }> {
+  const groups = new Map<string, GraphNode[]>();
+
+  for (const node of nodes) {
+    const groupedNodes = groups.get(node.type) ?? [];
+    groupedNodes.push(node);
+    groups.set(node.type, groupedNodes);
+  }
+
+  return Array.from(groups.entries()).map(([type, groupedNodes]) => ({ type, nodes: groupedNodes }));
+}
+
+function SemanticDocumentGraph({ documents }: { documents: VectorDocument[] }) {
+  return (
+    <div className="semantic-graph">
+      {documents.map((document) => (
+        <article className="semantic-card" key={document.id}>
+          <span>{document.source}</span>
+          <strong>{document.title}</strong>
+          <small>{formatLabel(document.contextType)}</small>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function GraphNodeMatrix({ groups }: { groups: Array<{ type: string; nodes: GraphNode[] }> }) {
+  return (
+    <div className="node-matrix">
+      {groups.map((group) => (
+        <section className="node-cluster" key={group.type}>
+          <h4>{formatLabel(group.type)}</h4>
+          <div className="node-chip-list">
+            {group.nodes.map((node) => (
+              <div className="node-chip" key={node.id}>
+                <strong>{node.label}</strong>
+                <small>{node.id}</small>
+              </div>
+            ))}
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}
+
+function GraphEdgeFlow({ edges, nodes }: { edges: GraphEdge[]; nodes: GraphNode[] }) {
+  const nodeLabels = new Map(nodes.map((node) => [node.id, node.label] as const));
+
+  return (
+    <div className="edge-flow">
+      {edges.map((edge) => (
+        <article className="edge-link" key={`${edge.from}-${edge.to}-${edge.label}`}>
+          <span>{nodeLabels.get(edge.from) ?? edge.from}</span>
+          <strong>{edge.label}</strong>
+          <span>{nodeLabels.get(edge.to) ?? edge.to}</span>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function MemoryLoopDiagram({ evidenceId, patterns }: { evidenceId: string; patterns: DecisionPattern[] }) {
+  return (
+    <div className="memory-loop">
+      <div className="memory-loop-node">
+        <span>Decision Evidence Store</span>
+        <strong>{evidenceId}</strong>
+      </div>
+      <div className="memory-loop-arrow">→</div>
+      <div className="memory-loop-node">
+        <span>Pattern Learning Service</span>
+        <strong>{patterns.length > 0 ? "Pattern extracted" : "Awaiting approval"}</strong>
+      </div>
+      <div className="memory-loop-arrow">→</div>
+      <div className="memory-loop-node">
+        <span>Curated Enterprise Memory</span>
+        <strong>{patterns.length > 0 ? `${patterns.length} stored pattern` : "No pattern stored yet"}</strong>
+      </div>
+    </div>
+  );
+}
+
+function DecisionPatternMemoryView({ patterns }: { patterns: DecisionPattern[] }) {
+  if (patterns.length === 0) {
+    return <div className="empty-detail">No approved decision patterns stored in enterprise memory yet.</div>;
+  }
+
+  return (
+    <div className="pattern-memory-list">
+      {patterns.map((pattern) => (
+        <article className="pattern-card" key={pattern.id}>
+          <div className="pattern-card-header">
+            <span>{pattern.id}</span>
+            <strong>{pattern.title}</strong>
+          </div>
+          <p>{pattern.recommendedReuse}</p>
+          <div className="pattern-chip-row">
+            {pattern.triggerConditions.map((condition) => (
+              <span key={condition}>{condition}</span>
+            ))}
+          </div>
+          <small>{pattern.writeBackTarget}</small>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function RetrievalHintView({ hints }: { hints: ContextRetrievalHint[] }) {
+  if (hints.length === 0) {
+    return <div className="empty-detail">No approved retrieval hints are available for Context Engine reuse yet.</div>;
+  }
+
+  return (
+    <div className="hint-list">
+      {hints.map((hint) => (
+        <article className="hint-card" key={hint.id}>
+          <strong>{hint.futureUse}</strong>
+          <p>{hint.explanation}</p>
+          <div className="hint-columns">
+            <div>
+              <span>Boosted context</span>
+              <div className="pattern-chip-row">
+                {hint.prioritizedContextTypes.map((type) => (
+                  <span key={type}>{formatLabel(type)}</span>
+                ))}
+              </div>
+            </div>
+            <div>
+              <span>Boosted entities</span>
+              <div className="pattern-chip-row">
+                {hint.boostedEntities.map((entity) => (
+                  <span key={entity}>{entity}</span>
+                ))}
+              </div>
+            </div>
+            <div>
+              <span>Deprioritized context</span>
+              <div className="pattern-chip-row">
+                {hint.deprioritizedContextTypes.map((type) => (
+                  <span key={type}>{formatLabel(type)}</span>
+                ))}
+              </div>
+            </div>
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function ContextRetrievalLearningView({
+  evidenceId,
+  hints,
+  signals,
+}: {
+  evidenceId: string;
+  hints: ContextRetrievalHint[];
+  signals: SeptonRun["learningSignals"];
+}) {
+  return (
+    <div className="learning-graph">
+      <div className="learning-stage">
+        <span>Evidence in</span>
+        <strong>{evidenceId}</strong>
+      </div>
+      <div className="learning-stage">
+        <span>Retrieval adjustments learned</span>
+        <strong>{hints.length} hint{hints.length === 1 ? "" : "s"}</strong>
+      </div>
+      <div className="learning-stage">
+        <span>Reused by Context Engine</span>
+        <strong>{hints.length > 0 ? "Future retrieval boosted" : "Awaiting approval"}</strong>
+      </div>
+      {signals.map((signal) => (
+        <article className="learning-card" key={signal.service}>
+          <strong>{signal.update}</strong>
+          <small>{signal.effect}</small>
+        </article>
+      ))}
+      <RetrievalHintView hints={hints} />
+    </div>
+  );
+}
+
+function PatternLearningView({
+  evidenceId,
+  patterns,
+  signals,
+}: {
+  evidenceId: string;
+  patterns: DecisionPattern[];
+  signals: SeptonRun["learningSignals"];
+}) {
+  return (
+    <div className="learning-graph">
+      <div className="learning-stage">
+        <span>Evidence in</span>
+        <strong>{evidenceId}</strong>
+      </div>
+      <div className="learning-stage">
+        <span>Pattern extracted</span>
+        <strong>{patterns.length > 0 ? patterns[0].title : "Awaiting approval"}</strong>
+      </div>
+      <div className="learning-stage">
+        <span>Memory write-back</span>
+        <strong>{patterns.length > 0 ? patterns[0].writeBackTarget : "No write-back yet"}</strong>
+      </div>
+      {signals.map((signal) => (
+        <article className="learning-card" key={signal.service}>
+          <strong>{signal.update}</strong>
+          <small>{signal.effect}</small>
+        </article>
+      ))}
+      <DecisionPatternMemoryView patterns={patterns} />
+    </div>
   );
 }
 

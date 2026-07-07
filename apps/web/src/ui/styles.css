@@ -653,6 +653,219 @@ h3 {
   overflow-wrap: anywhere;
 }
 
+.semantic-graph,
+.pattern-memory-list,
+.hint-list {
+  display: grid;
+  gap: 10px;
+}
+
+.semantic-graph {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.semantic-card,
+.pattern-card,
+.hint-card,
+.learning-stage {
+  border: 1px solid #dce3df;
+  border-radius: 8px;
+  padding: 12px;
+  background: #ffffff;
+}
+
+.semantic-card {
+  display: grid;
+  gap: 6px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+}
+
+.semantic-card span,
+.pattern-card small,
+.learning-stage span,
+.node-chip small {
+  color: #60717a;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.semantic-card small {
+  width: fit-content;
+  border: 1px solid #dce3df;
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: #f7fbf8;
+  color: #31505c;
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.node-matrix {
+  display: grid;
+  gap: 10px;
+}
+
+.node-cluster {
+  border: 1px solid #dce3df;
+  border-radius: 8px;
+  padding: 10px;
+  background: #ffffff;
+}
+
+.node-cluster h4 {
+  margin: 0 0 10px;
+  color: #26706c;
+  font-size: 0.82rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.node-chip-list,
+.pattern-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.node-chip {
+  display: grid;
+  gap: 3px;
+  min-width: 150px;
+  border: 1px solid #cbd9d6;
+  border-radius: 8px;
+  padding: 10px;
+  background: #eef7f5;
+}
+
+.edge-flow {
+  display: grid;
+  gap: 8px;
+}
+
+.edge-link {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #dce3df;
+  border-radius: 8px;
+  padding: 11px 12px;
+  background: #ffffff;
+}
+
+.edge-link span {
+  overflow-wrap: anywhere;
+}
+
+.edge-link strong {
+  border: 1px solid #cbd9d6;
+  border-radius: 999px;
+  padding: 5px 10px;
+  background: #f7fbf8;
+  color: #24444f;
+  font-size: 0.78rem;
+  text-align: center;
+}
+
+.memory-loop,
+.learning-graph {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.memory-loop {
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+}
+
+.memory-loop-node {
+  display: grid;
+  gap: 4px;
+  border: 1px solid #dce3df;
+  border-radius: 8px;
+  padding: 12px;
+  background: #f8fbff;
+}
+
+.memory-loop-arrow {
+  color: #1f6fef;
+  font-size: 1.2rem;
+  font-weight: 900;
+  text-align: center;
+}
+
+.pattern-card {
+  display: grid;
+  gap: 10px;
+}
+
+.pattern-card-header {
+  display: grid;
+  gap: 4px;
+}
+
+.pattern-card-header span {
+  color: #60717a;
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.pattern-chip-row span {
+  border: 1px solid #cbd9d6;
+  border-radius: 999px;
+  padding: 5px 9px;
+  background: #f7fbf8;
+  color: #31505c;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.hint-card {
+  display: grid;
+  gap: 10px;
+}
+
+.hint-columns {
+  display: grid;
+  gap: 10px;
+}
+
+.hint-columns > div {
+  display: grid;
+  gap: 6px;
+}
+
+.hint-columns > div > span {
+  color: #26706c;
+  font-size: 0.76rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.learning-graph {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.learning-graph .learning-card,
+.learning-graph .hint-list,
+.learning-graph .pattern-memory-list {
+  grid-column: 1 / -1;
+}
+
+.learning-stage strong {
+  color: #18202b;
+}
+
+.empty-detail {
+  border: 1px dashed #cbd9d6;
+  border-radius: 8px;
+  padding: 14px;
+  background: #fbfcfa;
+  color: #60717a;
+  line-height: 1.4;
+}
+
 .panel {
   padding: 18px;
 }
@@ -999,6 +1212,16 @@ h3 {
   .metric-row,
   .field-grid {
     grid-template-columns: 1fr;
+  }
+
+  .memory-loop,
+  .learning-graph,
+  .edge-link {
+    grid-template-columns: 1fr;
+  }
+
+  .memory-loop-arrow {
+    transform: rotate(90deg);
   }
 
   .question-actions,

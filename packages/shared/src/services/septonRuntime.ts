@@ -5,6 +5,7 @@ import { runDecisionWorkflow } from "./decisionEngine";
 import { createEvidencePackage } from "./evidenceStore";
 import { routeDecisionIntent } from "./intentRouter";
 import { buildKnowledgeBase } from "./knowledgeProcessing";
+import { buildInitialMemorySnapshot } from "./learningServices";
 
 export function runSepton(question: string, selectedCapabilityId?: CapabilityId): SeptonRun {
   const { records, statuses } = syncEnterpriseConnectors();
@@ -22,5 +23,8 @@ export function runSepton(question: string, selectedCapabilityId?: CapabilityId)
     recommendation,
     evidence,
     learningSignals: [],
+    patternArtifacts: [],
+    retrievalHints: [],
+    memorySnapshot: buildInitialMemorySnapshot(knowledgeBase),
   };
 }

@@ -210,6 +210,35 @@ export interface LearningSignal {
   effect: string;
 }
 
+export interface DecisionPattern {
+  id: string;
+  capabilityId: CapabilityId;
+  title: string;
+  triggerConditions: string[];
+  supportingEvidenceIds: string[];
+  recommendedReuse: string;
+  validationState: "candidate" | "validated";
+  writeBackTarget: string;
+}
+
+export interface ContextRetrievalHint {
+  id: string;
+  capabilityId: CapabilityId;
+  prioritizedContextTypes: ContextType[];
+  boostedEntities: string[];
+  deprioritizedContextTypes: ContextType[];
+  supportingEvidenceIds: string[];
+  explanation: string;
+  futureUse: string;
+}
+
+export interface EnterpriseMemorySnapshot {
+  entities: GraphNode[];
+  relationships: GraphEdge[];
+  semanticMemory: VectorDocument[];
+  decisionPatterns: DecisionPattern[];
+}
+
 export interface SeptonRun {
   connectorStatuses: Array<{
     source: EnterpriseSource;
@@ -224,4 +253,7 @@ export interface SeptonRun {
   recommendation: Recommendation;
   evidence: DecisionEvidencePackage;
   learningSignals: LearningSignal[];
+  patternArtifacts: DecisionPattern[];
+  retrievalHints: ContextRetrievalHint[];
+  memorySnapshot: EnterpriseMemorySnapshot;
 }
