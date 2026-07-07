@@ -249,14 +249,10 @@ function DecisionSummary({
         <strong>{approvalStatusLabel(run.evidence.approvalStatus)}</strong>
         <span>{approvalStatusDescription(run.evidence.approvalStatus)}</span>
       </div>
-      <div className="approval-scope">
-        <p className="eyebrow">Approval scope</p>
-        <strong>Approve the complete decision package</strong>
-        <span>
-          This includes the recommendation, supporting context, confidence rules, proposed actions, and evidence package.
-        </span>
+      <div className="recommendation-target">
+        <span>Recommendation for approval</span>
+        <p className="headline">{run.recommendation.headline}</p>
       </div>
-      <p className="headline">{run.recommendation.headline}</p>
       <div className="confidence">
         <span>Overall recommendation confidence</span>
         <strong>{Math.round(run.recommendation.confidence * 100)}%</strong>
