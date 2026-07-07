@@ -1,12 +1,10 @@
 import {
   Activity,
-  ArrowRight,
   BadgeCheck,
   Brain,
   ChevronDown,
   ChevronUp,
   CheckCircle2,
-  CircleDot,
   Database,
   FileSearch,
   GitBranch,
@@ -43,21 +41,6 @@ const capabilityChoices: Array<{ id: CapabilityId; label: string; description: s
     description: "Rebalance stock before demand changes.",
     question: inventoryQuestion,
   },
-];
-
-const pipeline = [
-  "Enterprise Onboarding",
-  "Platform Configuration",
-  "Data Sync & Ingestion",
-  "Knowledge Processing",
-  "Curated Enterprise Memory",
-  "Live Data Access Layer",
-  "Context Engine",
-  "Context Intent",
-  "Decision Engine",
-  "Consume",
-  "Decision Evidence Store",
-  "Learning Services",
 ];
 
 function formatLabel(value: string): string {
@@ -171,16 +154,6 @@ export function App() {
         ) : (
           <EmptyDecisionState selectedCapability={selectedCapability?.label ?? null} />
         )}
-      </section>
-
-      <section className="pipeline-band" aria-label="Septon runtime pipeline">
-        {pipeline.map((item, index) => (
-          <div className="pipeline-step" key={item}>
-            <CircleDot size={16} />
-            <span>{item}</span>
-            {index < pipeline.length - 1 && <ArrowRight className="pipe-arrow" size={15} />}
-          </div>
-        ))}
       </section>
 
       {run && (
@@ -886,7 +859,7 @@ function GraphPanel({ paths }: { paths: GraphPath[] }) {
                 {path.path.slice(0, 5).map((node, index) => (
                   <span className="graph-node-wrap" key={node.id}>
                     <span className="graph-node">{node.label}</span>
-                    {index < Math.min(path.path.length, 5) - 1 && <ArrowRight size={14} />}
+                    {index < Math.min(path.path.length, 5) - 1 && <span aria-hidden="true">→</span>}
                   </span>
                 ))}
               </div>

@@ -468,37 +468,6 @@ h3 {
   color: #26706c;
 }
 
-.pipeline-band {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 8px;
-  margin: 16px 0;
-}
-
-.pipeline-step {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  min-height: 54px;
-  border: 1px solid #cbd9d6;
-  border-radius: 8px;
-  background: #eaf4ef;
-  color: #23424f;
-  text-align: center;
-  font-size: 0.78rem;
-  font-weight: 850;
-}
-
-.pipe-arrow {
-  position: absolute;
-  right: -13px;
-  z-index: 1;
-  color: #1f6fef;
-  background: #f6f7f4;
-}
-
 .grid {
   display: grid;
   gap: 16px;
@@ -1018,9 +987,6 @@ h3 {
     justify-self: start;
   }
 
-  .pipe-arrow {
-    display: none;
-  }
 }
 
 @media (max-width: 680px) {
@@ -1030,7 +996,6 @@ h3 {
   }
 
   .connector-grid,
-  .pipeline-band,
   .metric-row,
   .field-grid {
     grid-template-columns: 1fr;
