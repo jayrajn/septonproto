@@ -19,6 +19,8 @@ import {
 } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
 import type { CapabilityId, ContextHit, GraphPath, SeptonRun } from "../../../../packages/shared/src/domain/types";
+import { approveEvidencePackage, rejectEvidencePackage } from "../../../../packages/shared/src/services/evidenceStore";
+import { learnFromEvidence } from "../../../../packages/shared/src/services/learningServices";
 import { runSepton } from "../../../../packages/shared/src/services/septonRuntime";
 
 const defaultQuestion =
@@ -70,6 +72,26 @@ export function App() {
     if (!selectedCapabilityId) return;
     setRun(runSepton(question, selectedCapabilityId));
     setRunCount((count) => count + 1);
+  }
+
+  function approveRecommendation() {
+    if (!run) return;
+    const approvedEvidence = approveEvidencePackage(run.evidence);
+    setRun({
+      ...run,
+      evidence: approvedEvidence,
+      learningSignals: learnFromEvidence(approvedEvidence),
+    });
+  }
+
+  function rejectRecommendation() {
+    if (!run) return;
+    const rejectedEvidence = rejectEvidencePackage(run.evidence);
+    setRun({
+      ...run,
+      evidence: rejectedEvidence,
+      learningSignals: [],
+    });
   }
 
   function resetDecision() {
@@ -133,7 +155,16 @@ export function App() {
             </button>
           </div>
         </div>
-        {run ? <DecisionSummary run={run} runCount={runCount} /> : <EmptyDecisionState selectedCapability={selectedCapability?.label ?? null} />}
+        {run ? (
+          <DecisionSummary
+            run={run}
+            runCount={runCount}
+            onApprove={approveRecommendation}
+            onReject={rejectRecommendation}
+          />
+        ) : (
+          <EmptyDecisionState selectedCapability={selectedCapability?.label ?? null} />
+        )}
       </section>
 
       <section className="pipeline-band" aria-label="Cepton runtime pipeline">
@@ -189,7 +220,19 @@ function EmptyDecisionState({ selectedCapability }: { selectedCapability: string
   );
 }
 
-function DecisionSummary({ run, runCount }: { run: SeptonRun; runCount: number }) {
+function DecisionSummary({
+  run,
+  runCount,
+  onApprove,
+  onReject,
+}: {
+  run: SeptonRun;
+  runCount: number;
+  onApprove: () => void;
+  onReject: () => void;
+}) {
+  const isAwaitingApproval = run.evidence.approvalStatus === "awaiting_admin_approval";
+
   return (
     <section className="answer-panel">
       <div className="panel-heading">
@@ -200,11 +243,34 @@ function DecisionSummary({ run, runCount }: { run: SeptonRun; runCount: number }
         <span>Run {runCount}</span>
         <span>{new Date(run.evidence.createdAt).toLocaleTimeString()}</span>
       </div>
+      <div className={`approval-status ${run.evidence.approvalStatus}`}>
+        <strong>{approvalStatusLabel(run.evidence.approvalStatus)}</strong>
+        <span>{approvalStatusDescription(run.evidence.approvalStatus)}</span>
+      </div>
+      <div className="approval-scope">
+        <p className="eyebrow">Approval scope</p>
+        <strong>Approve the complete decision package</strong>
+        <span>
+          This includes the recommendation, supporting context, confidence rules, proposed actions, and evidence package.
+        </span>
+      </div>
       <p className="headline">{run.recommendation.headline}</p>
       <div className="confidence">
-        <span>Confidence</span>
+        <span>Overall recommendation confidence</span>
         <strong>{Math.round(run.recommendation.confidence * 100)}%</strong>
       </div>
+      {isAwaitingApproval && (
+        <div className="approval-actions">
+          <button type="button" className="primary-button" onClick={onApprove}>
+            <ShieldCheck size={16} />
+            Approve recommendation
+          </button>
+          <button type="button" className="danger-button" onClick={onReject}>
+            Reject recommendation
+          </button>
+        </div>
+      )}
+      <h3>{run.intent.capabilityId === "inventory_optimization" ? "Inventory factors" : "Root cause contributors"}</h3>
       <div className="root-cause-list">
         {run.recommendation.rootCauses.slice(0, 3).map((cause) => (
           <article className="compact-card" key={cause.cause}>
@@ -212,11 +278,14 @@ function DecisionSummary({ run, runCount }: { run: SeptonRun; runCount: number }
               <strong>{cause.cause}</strong>
               <p>{cause.impact}</p>
             </div>
-            <span>{Math.round(cause.confidence * 100)}%</span>
+            <span>
+              {Math.round(cause.confidence * 100)}%
+              <small>evidence confidence</small>
+            </span>
           </article>
         ))}
       </div>
-      <h3>{run.intent.capabilityId === "inventory_optimization" ? "Inventory optimization plan" : "August promotion guardrails"}</h3>
+      <h3>{run.intent.capabilityId === "inventory_optimization" ? "Inventory optimization plan" : "Preventive actions and guardrails"}</h3>
       <ul className="check-list">
         {run.recommendation.augustPromotionGuardrails.map((item) => (
           <li key={item}>
@@ -227,6 +296,18 @@ function DecisionSummary({ run, runCount }: { run: SeptonRun; runCount: number }
       </ul>
     </section>
   );
+}
+
+function approvalStatusLabel(status: SeptonRun["evidence"]["approvalStatus"]): string {
+  if (status === "approved") return "Approved by admin";
+  if (status === "rejected") return "Rejected by admin";
+  return "Awaiting admin approval";
+}
+
+function approvalStatusDescription(status: SeptonRun["evidence"]["approvalStatus"]): string {
+  if (status === "approved") return "Evidence is stored and learning is enabled.";
+  if (status === "rejected") return "Evidence is not stored and learning is blocked.";
+  return "Evidence is not stored until a human validates the recommendation.";
 }
 
 function ConnectorPanel({ run }: { run: SeptonRun }) {
@@ -362,21 +443,36 @@ function GraphPanel({ paths }: { paths: GraphPath[] }) {
 }
 
 function EvidencePanel({ run }: { run: SeptonRun }) {
+  const isStored = run.evidence.storageStatus === "stored";
+  const statusText =
+    run.evidence.approvalStatus === "rejected"
+      ? "Rejected. No finalized evidence package was stored."
+      : isStored
+        ? "Stored after admin approval."
+        : "Not stored yet. Admin approval is required first.";
+
   return (
     <section className="panel">
       <div className="panel-heading">
         <ShieldCheck size={18} />
         <h2>Decision Evidence Store</h2>
       </div>
-      <div className="evidence-id">
-        <span>Evidence package</span>
-        <strong>{run.evidence.id}</strong>
+      <div className={isStored ? "evidence-id stored" : "evidence-id pending"}>
+        <span>{isStored ? "Evidence package" : "Storage status"}</span>
+        <strong>{isStored ? run.evidence.id : "Not stored yet"}</strong>
       </div>
+      <p className="storage-note">{statusText}</p>
       <div className="field-grid">
         <Metric icon={<Database size={17} />} label="Context used" value={run.evidence.contextUsed.length} />
         <Metric icon={<FileSearch size={17} />} label="Reasoning steps" value={run.evidence.reasoningTrace.length} />
-        <Metric icon={<BadgeCheck size={17} />} label="Status" value={formatLabel(run.evidence.outcome)} />
+        <Metric icon={<BadgeCheck size={17} />} label="Approval" value={formatLabel(run.evidence.approvalStatus)} />
       </div>
+      {run.evidence.reviewedBy && run.evidence.reviewedAt && (
+        <div className="review-note">
+          <span>Reviewed by {run.evidence.reviewedBy}</span>
+          <span>{new Date(run.evidence.reviewedAt).toLocaleString()}</span>
+        </div>
+      )}
       <h3>Reasoning trace</h3>
       <ol className="number-list">
         {run.evidence.reasoningTrace.map((item) => (
@@ -399,19 +495,31 @@ function EvidencePanel({ run }: { run: SeptonRun }) {
 }
 
 function LearningPanel({ run }: { run: SeptonRun }) {
+  const canLearn = run.evidence.approvalStatus === "approved";
+
   return (
     <section className="panel">
       <div className="panel-heading">
         <RefreshCcw size={18} />
         <h2>Learning Loop</h2>
       </div>
-      {run.learningSignals.map((signal) => (
-        <article className="learning-card" key={signal.service}>
-          <strong>{signal.service}</strong>
-          <p>{signal.update}</p>
-          <small>{signal.effect}</small>
-        </article>
-      ))}
+      {canLearn ? (
+        run.learningSignals.map((signal) => (
+          <article className="learning-card" key={signal.service}>
+            <strong>{signal.service}</strong>
+            <p>{signal.update}</p>
+            <small>{signal.effect}</small>
+          </article>
+        ))
+      ) : (
+        <div className="learning-locked">
+          <LockKeyhole size={18} />
+          <div>
+            <strong>Learning is paused</strong>
+            <p>Context retrieval learning and pattern learning run only after admin approval.</p>
+          </div>
+        </div>
+      )}
       <h3>Recommended actions</h3>
       <div className="action-list">
         {run.recommendation.actions.map((action) => (

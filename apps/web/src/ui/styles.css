@@ -202,7 +202,8 @@ h3 {
 }
 
 .primary-button,
-.ghost-button {
+.ghost-button,
+.danger-button {
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -229,6 +230,12 @@ h3 {
   border-color: #cbd9d6;
   background: #ffffff;
   color: #24444f;
+}
+
+.danger-button {
+  border-color: #d8b2a8;
+  background: #fff7f4;
+  color: #9a3412;
 }
 
 .answer-panel {
@@ -315,6 +322,69 @@ h3 {
   font-size: 1.35rem;
 }
 
+.approval-scope {
+  display: grid;
+  gap: 5px;
+  margin-top: 12px;
+  border: 1px solid #dce3df;
+  border-radius: 8px;
+  padding: 12px;
+  background: #f4f8ff;
+}
+
+.approval-scope .eyebrow {
+  margin: 0;
+}
+
+.approval-scope span {
+  color: #60717a;
+  font-size: 0.86rem;
+  line-height: 1.4;
+}
+
+.approval-status {
+  display: grid;
+  gap: 4px;
+  margin-top: 12px;
+  border: 1px solid #cbd9d6;
+  border-left: 4px solid #9ba9ad;
+  border-radius: 8px;
+  padding: 11px 12px;
+  background: #fbfcfa;
+}
+
+.approval-status strong {
+  font-size: 0.9rem;
+}
+
+.approval-status span {
+  color: #60717a;
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.approval-status.awaiting_admin_approval {
+  border-left-color: #b7791f;
+  background: #fffaf0;
+}
+
+.approval-status.approved {
+  border-left-color: #26706c;
+  background: #f7fbf8;
+}
+
+.approval-status.rejected {
+  border-left-color: #9a3412;
+  background: #fff7f4;
+}
+
+.approval-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
 .root-cause-list,
 .hit-list,
 .action-list,
@@ -353,10 +423,18 @@ h3 {
   line-height: 1.42;
 }
 
-.compact-card span {
+.compact-card > span {
+  display: grid;
+  justify-items: end;
   color: #26706c;
   font-weight: 900;
   white-space: nowrap;
+}
+
+.compact-card > span small {
+  color: #60717a;
+  font-size: 0.68rem;
+  font-weight: 800;
 }
 
 .context-match {
@@ -571,8 +649,46 @@ h3 {
   color: #ffffff;
 }
 
+.evidence-id.pending {
+  background: #fffaf0;
+  color: #4f3a11;
+}
+
+.evidence-id.stored {
+  background: #101a24;
+  color: #ffffff;
+}
+
 .evidence-id span {
   color: #c5d6d7;
+}
+
+.evidence-id.pending span {
+  color: #6f5a23;
+}
+
+.storage-note {
+  margin: 10px 0 0;
+  color: #60717a;
+  font-size: 0.86rem;
+  line-height: 1.4;
+}
+
+.review-note {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.review-note span {
+  border: 1px solid #dce3df;
+  border-radius: 999px;
+  padding: 5px 9px;
+  background: #fbfcfa;
+  color: #40535e;
+  font-size: 0.76rem;
+  font-weight: 800;
 }
 
 .number-list {
@@ -609,6 +725,29 @@ h3 {
 .action-list article {
   margin-top: 14px;
   padding: 12px;
+}
+
+.learning-locked {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 14px;
+  border: 1px solid #dce3df;
+  border-left: 4px solid #b7791f;
+  border-radius: 8px;
+  padding: 12px;
+  background: #fffaf0;
+}
+
+.learning-locked svg {
+  flex: 0 0 auto;
+  color: #b7791f;
+}
+
+.learning-locked p {
+  margin: 4px 0 0;
+  color: #60717a;
+  line-height: 1.4;
 }
 
 @media (max-width: 1120px) {

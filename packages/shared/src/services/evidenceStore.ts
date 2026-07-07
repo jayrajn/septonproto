@@ -21,6 +21,30 @@ export function createEvidencePackage(bundle: ContextBundle, recommendation: Rec
     recommendation,
     confidence: recommendation.confidence,
     outcome: "pending_feedback",
+    approvalStatus: "awaiting_admin_approval",
+    storageStatus: "not_stored",
+  };
+}
+
+export function approveEvidencePackage(evidence: DecisionEvidencePackage, reviewer = "Prototype Admin"): DecisionEvidencePackage {
+  return {
+    ...evidence,
+    outcome: "accepted",
+    approvalStatus: "approved",
+    storageStatus: "stored",
+    reviewedBy: reviewer,
+    reviewedAt: new Date().toISOString(),
+  };
+}
+
+export function rejectEvidencePackage(evidence: DecisionEvidencePackage, reviewer = "Prototype Admin"): DecisionEvidencePackage {
+  return {
+    ...evidence,
+    outcome: "rejected",
+    approvalStatus: "rejected",
+    storageStatus: "not_stored",
+    reviewedBy: reviewer,
+    reviewedAt: new Date().toISOString(),
   };
 }
 

@@ -128,6 +128,9 @@ export interface Recommendation {
   confidence: number;
 }
 
+export type DecisionApprovalStatus = "awaiting_admin_approval" | "approved" | "rejected";
+export type EvidenceStorageStatus = "not_stored" | "stored";
+
 export interface DecisionEvidencePackage {
   id: string;
   createdAt: string;
@@ -148,6 +151,10 @@ export interface DecisionEvidencePackage {
   recommendation: Recommendation;
   confidence: number;
   outcome: "pending_feedback" | "accepted" | "rejected";
+  approvalStatus: DecisionApprovalStatus;
+  storageStatus: EvidenceStorageStatus;
+  reviewedBy?: string;
+  reviewedAt?: string;
 }
 
 export interface LearningSignal {

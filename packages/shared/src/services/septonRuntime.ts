@@ -5,7 +5,6 @@ import { runDecisionWorkflow } from "./decisionEngine";
 import { createEvidencePackage } from "./evidenceStore";
 import { routeDecisionIntent } from "./intentRouter";
 import { buildKnowledgeBase } from "./knowledgeProcessing";
-import { learnFromEvidence } from "./learningServices";
 
 export function runSepton(question: string, selectedCapabilityId?: CapabilityId): SeptonRun {
   const { records, statuses } = syncEnterpriseConnectors();
@@ -14,7 +13,6 @@ export function runSepton(question: string, selectedCapabilityId?: CapabilityId)
   const contextBundle = assembleContext(intent, knowledgeBase);
   const recommendation = runDecisionWorkflow(contextBundle);
   const evidence = createEvidencePackage(contextBundle, recommendation);
-  const learningSignals = learnFromEvidence(evidence);
 
   return {
     connectorStatuses: statuses,
@@ -23,6 +21,6 @@ export function runSepton(question: string, selectedCapabilityId?: CapabilityId)
     contextBundle,
     recommendation,
     evidence,
-    learningSignals,
+    learningSignals: [],
   };
 }
