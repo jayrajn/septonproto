@@ -353,11 +353,29 @@ h3 {
   line-height: 1.42;
 }
 
-.compact-card span,
-.hit-row span {
+.compact-card span {
   color: #26706c;
   font-weight: 900;
   white-space: nowrap;
+}
+
+.context-match {
+  display: grid;
+  justify-items: end;
+  align-content: center;
+  min-width: 96px;
+  color: #26706c;
+  white-space: nowrap;
+}
+
+.context-match strong {
+  font-size: 1.1rem;
+}
+
+.context-match span {
+  color: #60717a;
+  font-size: 0.75rem;
+  font-weight: 800;
 }
 
 .check-list {

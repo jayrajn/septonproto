@@ -285,6 +285,8 @@ function IntentPanel({ run }: { run: SeptonRun }) {
 }
 
 function ContextPanel({ run }: { run: SeptonRun }) {
+  const topContextScore = Math.max(...run.contextBundle.vectorHits.map((hit) => hit.score), 0);
+
   return (
     <section className="panel context-panel">
       <div className="panel-heading">
@@ -299,17 +301,26 @@ function ContextPanel({ run }: { run: SeptonRun }) {
           </div>
         ))}
       </div>
-      <h3>Ranked context bundle</h3>
+      <h3>Context used by Septon</h3>
       <div className="hit-list">
         {run.contextBundle.vectorHits.map((hit) => (
-          <ContextHitRow hit={hit} key={hit.record.id} />
+          <ContextHitRow hit={hit} key={hit.record.id} topScore={topContextScore} />
         ))}
       </div>
     </section>
   );
 }
 
-function ContextHitRow({ hit }: { hit: ContextHit }) {
+function contextMatchLabel(matchPercent: number): string {
+  if (matchPercent >= 90) return "High match";
+  if (matchPercent >= 70) return "Good match";
+  if (matchPercent >= 50) return "Supporting context";
+  return "Low match";
+}
+
+function ContextHitRow({ hit, topScore }: { hit: ContextHit; topScore: number }) {
+  const matchPercent = topScore > 0 ? Math.round((hit.score / topScore) * 100) : 0;
+
   return (
     <article className="hit-row">
       <div>
@@ -318,7 +329,10 @@ function ContextHitRow({ hit }: { hit: ContextHit }) {
           {hit.record.source} · {formatLabel(hit.record.type)} · {hit.reasons.join(", ")}
         </p>
       </div>
-      <span>{hit.score.toFixed(2)}</span>
+      <div className="context-match">
+        <strong>{matchPercent}%</strong>
+        <span>{contextMatchLabel(matchPercent)}</span>
+      </div>
     </article>
   );
 }
