@@ -46,14 +46,18 @@ const capabilityChoices: Array<{ id: CapabilityId; label: string; description: s
 ];
 
 const pipeline = [
-  "Connectors",
+  "Enterprise Onboarding",
+  "Platform Configuration",
+  "Data Sync & Ingestion",
   "Knowledge Processing",
-  "Curated Memory",
-  "Intent + Capability",
+  "Curated Enterprise Memory",
+  "Live Data Access Layer",
   "Context Engine",
+  "Context Intent",
   "Decision Engine",
-  "Evidence Store",
-  "Learning",
+  "Consume",
+  "Decision Evidence Store",
+  "Learning Services",
 ];
 
 function formatLabel(value: string): string {
@@ -180,24 +184,165 @@ export function App() {
       </section>
 
       {run && (
-        <>
-          <section className="grid two">
-            <ConnectorPanel run={run} />
-            <IntentPanel run={run} />
-          </section>
-
-          <section className="grid two wide-left">
-            <ContextPanel run={run} />
-            <GraphPanel paths={run.contextBundle.graphPaths} />
-          </section>
-
-          <section className="grid two">
-            <EvidencePanel run={run} />
-            <LearningPanel run={run} />
-          </section>
-        </>
+        <RuntimeFlow key={run.evidence.id} run={run} />
       )}
     </main>
+  );
+}
+
+function RuntimeFlow({ run }: { run: SeptonRun }) {
+  const isStored = run.evidence.storageStatus === "stored";
+  const canLearn = run.evidence.approvalStatus === "approved";
+
+  return (
+    <section className="runtime-flow" aria-label="Septon architecture flow">
+      <CollapsibleRuntimeSection
+        step="1"
+        title="Enterprise Onboarding"
+        icon={<Database size={18} />}
+        summary={`${run.connectorStatuses.length} enterprise systems connected for this prototype run`}
+      >
+        <ConnectorPanel run={run} />
+      </CollapsibleRuntimeSection>
+
+      <CollapsibleRuntimeSection
+        step="2"
+        title="Platform Configuration"
+        icon={<ShieldCheck size={18} />}
+        summary={`${run.intent.capabilityName} capability, governance rules, and retrieval policy selected`}
+      >
+        <PlatformConfigurationPanel run={run} />
+      </CollapsibleRuntimeSection>
+
+      <CollapsibleRuntimeSection
+        step="3"
+        title="Data Sync & Ingestion"
+        icon={<Layers3 size={18} />}
+        summary={`${run.knowledgeBase.records.length} records normalized into the prototype runtime`}
+      >
+        <IngestionPanel run={run} />
+      </CollapsibleRuntimeSection>
+
+      <CollapsibleRuntimeSection
+        step="4"
+        title="Knowledge Processing"
+        icon={<Brain size={18} />}
+        summary={`${run.knowledgeBase.documents.length} semantic documents and ${run.knowledgeBase.nodes.length} graph nodes created`}
+      >
+        <KnowledgeProcessingPanel run={run} />
+      </CollapsibleRuntimeSection>
+
+      <CollapsibleRuntimeSection
+        step="5"
+        title="Curated Enterprise Memory"
+        icon={<Database size={18} />}
+        summary={`${run.knowledgeBase.nodes.length} entities, ${run.knowledgeBase.edges.length} relationships, and reusable context stored`}
+      >
+        <EnterpriseMemoryPanel run={run} />
+      </CollapsibleRuntimeSection>
+
+      <CollapsibleRuntimeSection
+        step="6"
+        title="Live Data Access Layer"
+        icon={<Activity size={18} />}
+        summary={`${run.contextBundle.liveData.length} freshness-sensitive records checked for this decision`}
+      >
+        <LiveDataAccessPanel run={run} />
+      </CollapsibleRuntimeSection>
+
+      <CollapsibleRuntimeSection
+        step="7"
+        title="Context Engine"
+        icon={<FileSearch size={18} />}
+        summary={`${run.contextBundle.vectorHits.length} ranked context items selected for the decision`}
+      >
+        <ContextPanel run={run} />
+      </CollapsibleRuntimeSection>
+
+      <CollapsibleRuntimeSection
+        step="8"
+        title="Context Intent"
+        icon={<Network size={18} />}
+        summary={`${run.intent.capabilityName} selected for ${run.intent.market}`}
+      >
+        <IntentPanel run={run} />
+      </CollapsibleRuntimeSection>
+
+      <CollapsibleRuntimeSection
+        step="9"
+        title="Consume"
+        icon={<Sparkles size={18} />}
+        summary="Web app displays the recommendation and captures approve/reject feedback"
+      >
+        <ConsumePanel run={run} />
+      </CollapsibleRuntimeSection>
+
+      <CollapsibleRuntimeSection
+        step="10"
+        title="Decision Evidence Store"
+        icon={<ShieldCheck size={18} />}
+        summary={isStored ? "Evidence stored after approval" : "Evidence not stored yet"}
+      >
+        <EvidencePanel run={run} />
+      </CollapsibleRuntimeSection>
+
+      <CollapsibleRuntimeSection
+        step="11A"
+        title="Context Retrieval Learning"
+        icon={<RefreshCcw size={18} />}
+        summary={canLearn ? "Retrieval learning enabled from approved evidence" : "Retrieval learning paused until approval"}
+      >
+        <LearningPanel run={run} mode="context" />
+      </CollapsibleRuntimeSection>
+
+      <CollapsibleRuntimeSection
+        step="11B"
+        title="Pattern Learning Service"
+        icon={<RefreshCcw size={18} />}
+        summary={canLearn ? "Pattern learning enabled from approved evidence" : "Pattern learning paused until approval"}
+      >
+        <LearningPanel run={run} mode="pattern" />
+      </CollapsibleRuntimeSection>
+    </section>
+  );
+}
+
+function CollapsibleRuntimeSection({
+  step,
+  title,
+  icon,
+  summary,
+  children,
+}: {
+  step: string;
+  title: string;
+  icon: ReactNode;
+  summary: string;
+  children: ReactNode;
+}) {
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  return (
+    <section className="collapsible-section">
+      <button
+        type="button"
+        className="collapsible-header"
+        aria-expanded={isExpanded}
+        onClick={() => setIsExpanded((value) => !value)}
+      >
+        <span className="flow-step">{step}</span>
+        <span className="flow-icon">{icon}</span>
+        <span className="collapsible-title">
+          <strong>{title}</strong>
+          <small>{summary}</small>
+        </span>
+        <span className="collapsible-action">
+          {isExpanded ? "Hide details" : "Show details"}
+          {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+        </span>
+      </button>
+      {isExpanded && <div className="collapsible-body">{children}</div>}
+    </section>
   );
 }
 
@@ -239,7 +384,7 @@ function DecisionSummary({
     <section className="answer-panel">
       <div className="panel-heading">
         <Sparkles size={18} />
-        <h2>Recommendation</h2>
+        <h2>Decision Engine Recommendation</h2>
       </div>
       <div className="run-stamp">
         <span>Run {runCount}</span>
@@ -313,7 +458,7 @@ function ConnectorPanel({ run }: { run: SeptonRun }) {
     <section className="panel">
       <div className="panel-heading">
         <Database size={18} />
-        <h2>Enterprise Connectors</h2>
+        <h2>Enterprise Onboarding</h2>
       </div>
       <div className="connector-grid">
         {run.connectorStatuses.map((status) => (
@@ -336,12 +481,169 @@ function ConnectorPanel({ run }: { run: SeptonRun }) {
   );
 }
 
+function PlatformConfigurationPanel({ run }: { run: SeptonRun }) {
+  return (
+    <section className="panel">
+      <div className="panel-heading">
+        <ShieldCheck size={18} />
+        <h2>Platform Configuration</h2>
+      </div>
+      <div className="intent-result">
+        <p className="eyebrow">Configuration selected for this run</p>
+        <h3>{run.intent.capabilityName}</h3>
+        <p>
+          Capability catalog, governance policy, confidence rules, output schema, and evidence schema are selected
+          before context retrieval starts.
+        </p>
+      </div>
+      <div className="field-grid">
+        <Metric icon={<Brain size={17} />} label="Capability" value={run.intent.capabilityName} />
+        <Metric icon={<ShieldCheck size={17} />} label="Confidence rules" value={run.contextBundle.capability.confidenceRules.length} />
+        <Metric icon={<LockKeyhole size={17} />} label="Evidence schema" value={run.contextBundle.capability.evidenceSchema.length} />
+      </div>
+      <h3>Configured retrieval strategy</h3>
+      <ol className="number-list">
+        {run.contextBundle.capability.retrievalStrategy.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+function IngestionPanel({ run }: { run: SeptonRun }) {
+  const syncModes = Array.from(new Set(run.connectorStatuses.map((status) => status.syncMode))).join(", ");
+
+  return (
+    <section className="panel">
+      <div className="panel-heading">
+        <Layers3 size={18} />
+        <h2>Data Sync & Ingestion</h2>
+      </div>
+      <div className="field-grid">
+        <Metric icon={<Database size={17} />} label="Canonical records" value={run.knowledgeBase.records.length} />
+        <Metric icon={<Activity size={17} />} label="Sync modes" value={syncModes} />
+        <Metric icon={<BadgeCheck size={17} />} label="Sources" value={run.connectorStatuses.length} />
+      </div>
+      <h3>Records moved into Septon</h3>
+      <div className="tag-row">
+        {Array.from(new Set(run.knowledgeBase.records.map((record) => record.source))).map((source) => (
+          <span key={source}>{source}</span>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function KnowledgeProcessingPanel({ run }: { run: SeptonRun }) {
+  return (
+    <section className="panel">
+      <div className="panel-heading">
+        <Brain size={18} />
+        <h2>Knowledge Processing</h2>
+      </div>
+      <div className="intent-result">
+        <p className="eyebrow">Meaning extracted</p>
+        <h3>Raw records converted into searchable enterprise knowledge</h3>
+        <p>
+          The prototype classifies records, creates semantic documents, maps entities, builds graph relationships, and
+          prepares embeddings for retrieval.
+        </p>
+      </div>
+      <div className="field-grid">
+        <Metric icon={<Search size={17} />} label="Semantic documents" value={run.knowledgeBase.documents.length} />
+        <Metric icon={<GitBranch size={17} />} label="Graph nodes" value={run.knowledgeBase.nodes.length} />
+        <Metric icon={<Network size={17} />} label="Graph edges" value={run.knowledgeBase.edges.length} />
+      </div>
+    </section>
+  );
+}
+
+function EnterpriseMemoryPanel({ run }: { run: SeptonRun }) {
+  return (
+    <section className="panel">
+      <div className="panel-heading">
+        <Database size={18} />
+        <h2>Curated Enterprise Memory</h2>
+      </div>
+      <div className="intent-result">
+        <p className="eyebrow">Memory available to Septon</p>
+        <h3>Semantic memory, entities, relationships, facts, events, sources, and decision patterns</h3>
+        <p>
+          This prototype stores curated references instead of copying every raw enterprise record into the decision
+          workflow.
+        </p>
+      </div>
+      <div className="field-grid">
+        <Metric icon={<Layers3 size={17} />} label="Entities" value={run.knowledgeBase.nodes.length} />
+        <Metric icon={<GitBranch size={17} />} label="Relationships" value={run.knowledgeBase.edges.length} />
+        <Metric icon={<FileSearch size={17} />} label="Semantic memory items" value={run.knowledgeBase.documents.length} />
+      </div>
+    </section>
+  );
+}
+
+function LiveDataAccessPanel({ run }: { run: SeptonRun }) {
+  return (
+    <section className="panel">
+      <div className="panel-heading">
+        <Activity size={18} />
+        <h2>Live Data Access Layer</h2>
+      </div>
+      <div className="intent-result">
+        <p className="eyebrow">Freshness-sensitive access</p>
+        <h3>{run.contextBundle.liveData.length} live operational records checked</h3>
+        <p>
+          Enterprise adapters apply freshness policy and retrieve current operational context for inventory, incidents,
+          supplier status, and promotion readiness.
+        </p>
+      </div>
+      <div className="hit-list">
+        {run.contextBundle.liveData.map((record) => (
+          <article className="hit-row" key={record.id}>
+            <div>
+              <strong>{record.title}</strong>
+              <p>
+                {record.source} · {formatLabel(record.type)} · {record.week ?? "current period"}
+              </p>
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ConsumePanel({ run }: { run: SeptonRun }) {
+  return (
+    <section className="panel">
+      <div className="panel-heading">
+        <Sparkles size={18} />
+        <h2>Consume</h2>
+      </div>
+      <div className="intent-result">
+        <p className="eyebrow">End-user experience</p>
+        <h3>Recommendation reviewed in the web app</h3>
+        <p>
+          The user sees the Decision Engine recommendation, reviews supporting context, and captures the approval or
+          rejection outcome before evidence is finalized.
+        </p>
+      </div>
+      <div className="field-grid">
+        <Metric icon={<Sparkles size={17} />} label="Recommendation" value="Visible" />
+        <Metric icon={<ShieldCheck size={17} />} label="Approval status" value={formatLabel(run.evidence.approvalStatus)} />
+        <Metric icon={<BadgeCheck size={17} />} label="Outcome capture" value={formatLabel(run.evidence.outcome)} />
+      </div>
+    </section>
+  );
+}
+
 function IntentPanel({ run }: { run: SeptonRun }) {
   return (
     <section className="panel">
       <div className="panel-heading">
         <Brain size={18} />
-        <h2>Intent + Capability Router</h2>
+        <h2>Context Intent</h2>
       </div>
       <div className="intent-result">
         <p className="eyebrow">What Septon understood</p>
@@ -362,8 +664,7 @@ function IntentPanel({ run }: { run: SeptonRun }) {
       <div className="routing-note">
         <LockKeyhole size={16} />
         <span>
-          The capability selection controls the retrieval workflow, validation rules, output format, and evidence schema
-          for this run.
+          Context Intent converts the natural-language question into structured business intent for the Decision Engine.
         </span>
       </div>
     </section>
@@ -409,6 +710,8 @@ function ContextPanel({ run }: { run: SeptonRun }) {
           <ContextHitRow hit={hit} key={hit.record.id} topScore={topContextScore} />
         ))}
       </div>
+      <h3>Graph search used by Context Engine</h3>
+      <GraphPanel paths={run.contextBundle.graphPaths} />
     </section>
   );
 }
@@ -537,17 +840,23 @@ function EvidencePanel({ run }: { run: SeptonRun }) {
   );
 }
 
-function LearningPanel({ run }: { run: SeptonRun }) {
+function LearningPanel({ run, mode }: { run: SeptonRun; mode: "context" | "pattern" }) {
   const canLearn = run.evidence.approvalStatus === "approved";
+  const serviceName = mode === "context" ? "Context Retrieval Learning" : "Pattern Learning Service";
+  const signals = run.learningSignals.filter((signal) => signal.service === serviceName);
+  const lockedText =
+    mode === "context"
+      ? "Context retrieval learning runs only after admin approval."
+      : "Pattern learning runs only after admin approval.";
 
   return (
     <section className="panel">
       <div className="panel-heading">
         <RefreshCcw size={18} />
-        <h2>Learning Loop</h2>
+        <h2>{serviceName}</h2>
       </div>
       {canLearn ? (
-        run.learningSignals.map((signal) => (
+        signals.map((signal) => (
           <article className="learning-card" key={signal.service}>
             <strong>{signal.service}</strong>
             <p>{signal.update}</p>
@@ -559,21 +868,25 @@ function LearningPanel({ run }: { run: SeptonRun }) {
           <LockKeyhole size={18} />
           <div>
             <strong>Learning is paused</strong>
-            <p>Context retrieval learning and pattern learning run only after admin approval.</p>
+            <p>{lockedText}</p>
           </div>
         </div>
       )}
-      <h3>Recommended actions</h3>
-      <div className="action-list">
-        {run.recommendation.actions.map((action) => (
-          <article key={action.action}>
-            <strong>{action.action}</strong>
-            <p>
-              {action.owner} · {action.timing} · {action.expectedEffect}
-            </p>
-          </article>
-        ))}
-      </div>
+      {mode === "pattern" && (
+        <>
+          <h3>Recommended actions used for pattern learning</h3>
+          <div className="action-list">
+            {run.recommendation.actions.map((action) => (
+              <article key={action.action}>
+                <strong>{action.action}</strong>
+                <p>
+                  {action.owner} · {action.timing} · {action.expectedEffect}
+                </p>
+              </article>
+            ))}
+          </div>
+        </>
+      )}
     </section>
   );
 }

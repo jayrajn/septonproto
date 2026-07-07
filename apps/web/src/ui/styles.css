@@ -470,7 +470,7 @@ h3 {
 
 .pipeline-band {
   display: grid;
-  grid-template-columns: repeat(8, minmax(110px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 8px;
   margin: 16px 0;
 }
@@ -511,6 +511,100 @@ h3 {
 
 .grid.wide-left {
   grid-template-columns: minmax(520px, 1.25fr) minmax(340px, 0.75fr);
+}
+
+.runtime-flow {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.collapsible-section {
+  overflow: hidden;
+  border: 1px solid #d4d9d1;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 10px 24px rgba(24, 32, 43, 0.05);
+}
+
+.collapsible-header {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 68px;
+  border: 0;
+  padding: 12px 14px;
+  background: #ffffff;
+  color: #18202b;
+  cursor: pointer;
+  text-align: left;
+}
+
+.collapsible-header:hover {
+  background: #fbfcfa;
+}
+
+.flow-step {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 38px;
+  min-height: 34px;
+  border-radius: 8px;
+  background: #eaf4ef;
+  color: #26706c;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.flow-icon {
+  display: inline-flex;
+  color: #1f6fef;
+}
+
+.collapsible-title {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.collapsible-title strong {
+  overflow-wrap: anywhere;
+}
+
+.collapsible-title small {
+  color: #60717a;
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.collapsible-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #24444f;
+  font-size: 0.8rem;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.collapsible-body {
+  border-top: 1px solid #e2e7e4;
+  padding: 16px;
+  background: #ffffff;
+}
+
+.collapsible-body > .panel {
+  border: 0;
+  box-shadow: none;
+  padding: 0;
+}
+
+.collapsible-body > .panel > .panel-heading {
+  display: none;
 }
 
 .panel {
@@ -834,9 +928,17 @@ h3 {
     justify-content: flex-start;
   }
 
-  .connector-grid,
-  .pipeline-band {
+  .connector-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .collapsible-header {
+    grid-template-columns: auto auto minmax(0, 1fr);
+  }
+
+  .collapsible-action {
+    grid-column: 3;
+    justify-self: start;
   }
 
   .pipe-arrow {
