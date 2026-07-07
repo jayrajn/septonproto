@@ -23,7 +23,9 @@ import type {
   CapabilityId,
   ContextHit,
   ContextRetrievalHint,
+  EvidenceStoreState,
   LearningState,
+  PatternLearningStatus,
   DecisionPattern,
   GraphEdge,
   GraphNode,
@@ -32,7 +34,11 @@ import type {
   VectorDocument,
 } from "../../../../packages/shared/src/domain/types";
 import { approveEvidencePackage, rejectEvidencePackage } from "../../../../packages/shared/src/services/evidenceStore";
-import { createEmptyLearningState, storeApprovedLearning } from "../../../../packages/shared/src/services/learningServices";
+import {
+  createEmptyEvidenceStoreState,
+  createEmptyLearningState,
+  storeDecisionOutcome,
+} from "../../../../packages/shared/src/services/learningServices";
 import { runSepton } from "../../../../packages/shared/src/services/septonRuntime";
 
 const defaultQuestion =
@@ -65,6 +71,7 @@ export function App() {
   const [selectedCapabilityId, setSelectedCapabilityId] = useState<CapabilityId | null>(null);
   const [runCount, setRunCount] = useState(0);
   const [run, setRun] = useState<SeptonRun | null>(null);
+  const [evidenceStoreState, setEvidenceStoreState] = useState<EvidenceStoreState>(() => createEmptyEvidenceStoreState());
   const [learningState, setLearningState] = useState<LearningState>(() => createEmptyLearningState());
   const selectedCapability = useMemo(
     () => capabilityChoices.find((capability) => capability.id === selectedCapabilityId) ?? null,
@@ -87,8 +94,9 @@ export function App() {
   function approveRecommendation() {
     if (!run) return;
     const approvedEvidence = approveEvidencePackage(run.evidence);
-    const learningArtifacts = storeApprovedLearning(approvedEvidence, run.knowledgeBase, learningState);
+    const learningArtifacts = storeDecisionOutcome(approvedEvidence, run.knowledgeBase, learningState, evidenceStoreState);
     setLearningState(learningArtifacts.learningState);
+    setEvidenceStoreState(learningArtifacts.evidenceStoreState);
     setRun({
       ...run,
       evidence: approvedEvidence,
@@ -102,12 +110,16 @@ export function App() {
   function rejectRecommendation() {
     if (!run) return;
     const rejectedEvidence = rejectEvidencePackage(run.evidence);
+    const learningArtifacts = storeDecisionOutcome(rejectedEvidence, run.knowledgeBase, learningState, evidenceStoreState);
+    setLearningState(learningArtifacts.learningState);
+    setEvidenceStoreState(learningArtifacts.evidenceStoreState);
     setRun({
       ...run,
       evidence: rejectedEvidence,
-      learningSignals: [],
-      patternArtifacts: run.contextBundle.appliedDecisionPatterns,
-      retrievalHints: run.contextBundle.appliedRetrievalHints,
+      learningSignals: learningArtifacts.learningSignals,
+      patternArtifacts: learningArtifacts.patternArtifacts,
+      retrievalHints: learningArtifacts.retrievalHints,
+      memorySnapshot: learningArtifacts.memorySnapshot,
     });
   }
 
@@ -177,6 +189,7 @@ export function App() {
             </button>
           </div>
         </div>
+        <TopEvidenceStoreSummary evidenceStoreState={evidenceStoreState} selectedCapabilityId={selectedCapabilityId} />
         {run ? (
           <DecisionSummary
             run={run}
@@ -189,16 +202,14 @@ export function App() {
         )}
       </section>
 
-      {run && (
-        <RuntimeFlow key={run.evidence.id} run={run} />
-      )}
+      {run && <RuntimeFlow key={run.evidence.id} run={run} evidenceStoreState={evidenceStoreState} />}
     </main>
   );
 }
 
-function RuntimeFlow({ run }: { run: SeptonRun }) {
-  const isStored = run.evidence.storageStatus === "stored";
-  const canLearn = run.evidence.approvalStatus === "approved";
+function RuntimeFlow({ run, evidenceStoreState }: { run: SeptonRun; evidenceStoreState: EvidenceStoreState }) {
+  const activePatternStatus = getPatternStatus(evidenceStoreState, run.intent.capabilityId);
+  const canLearnContext = run.evidence.approvalStatus === "approved";
 
   return (
     <section className="runtime-flow" aria-label="Septon architecture flow">
@@ -278,27 +289,27 @@ function RuntimeFlow({ run }: { run: SeptonRun }) {
         step="9"
         title="Decision Evidence Store"
         icon={<ShieldCheck size={18} />}
-        summary={isStored ? "Evidence stored after approval" : "Evidence not stored yet"}
+        summary={`${evidenceStoreState.storedCounts.total} stored decisions, ${evidenceStoreState.storedCounts.approved} approved, ${evidenceStoreState.storedCounts.rejected} rejected`}
       >
-        <EvidencePanel run={run} />
+        <EvidencePanel run={run} evidenceStoreState={evidenceStoreState} />
       </CollapsibleRuntimeSection>
 
       <CollapsibleRuntimeSection
         step="10A"
         title="Context Retrieval Learning"
         icon={<RefreshCcw size={18} />}
-        summary={canLearn ? "Retrieval learning enabled from approved evidence" : "Retrieval learning paused until approval"}
+        summary={canLearnContext ? "Retrieval learning enabled from approved evidence" : "Retrieval learning paused until approval"}
       >
-        <LearningPanel run={run} mode="context" />
+        <LearningPanel run={run} evidenceStoreState={evidenceStoreState} mode="context" />
       </CollapsibleRuntimeSection>
 
       <CollapsibleRuntimeSection
         step="10B"
         title="Pattern Learning Service"
         icon={<RefreshCcw size={18} />}
-        summary={canLearn ? "Pattern learning enabled from approved evidence" : "Pattern learning paused until approval"}
+        summary={patternSummary(activePatternStatus)}
       >
-        <LearningPanel run={run} mode="pattern" />
+        <LearningPanel run={run} evidenceStoreState={evidenceStoreState} mode="pattern" />
       </CollapsibleRuntimeSection>
     </section>
   );
@@ -478,9 +489,56 @@ function approvalStatusLabel(status: SeptonRun["evidence"]["approvalStatus"]): s
 }
 
 function approvalStatusDescription(status: SeptonRun["evidence"]["approvalStatus"]): string {
-  if (status === "approved") return "Evidence is stored and learning is enabled.";
-  if (status === "rejected") return "Evidence is not stored and learning is blocked.";
+  if (status === "approved") return "Evidence is stored. Retrieval learning is enabled, and pattern promotion depends on evidence-store threshold.";
+  if (status === "rejected") return "Evidence is stored for audit, but rejected outcomes do not create retrieval hints or memory patterns.";
   return "Evidence is not stored until a human validates the recommendation.";
+}
+
+function TopEvidenceStoreSummary({
+  evidenceStoreState,
+  selectedCapabilityId,
+}: {
+  evidenceStoreState: EvidenceStoreState;
+  selectedCapabilityId: CapabilityId | null;
+}) {
+  const activeStatus = selectedCapabilityId ? getPatternStatus(evidenceStoreState, selectedCapabilityId) : null;
+
+  return (
+    <section className="evidence-summary-panel">
+      <div className="panel-heading">
+        <ShieldCheck size={18} />
+        <h2>Decision Evidence Store</h2>
+      </div>
+      <div className="field-grid compact-grid">
+        <Metric icon={<Database size={17} />} label="Stored decisions" value={evidenceStoreState.storedCounts.total} />
+        <Metric icon={<BadgeCheck size={17} />} label="Approved" value={evidenceStoreState.storedCounts.approved} />
+        <Metric icon={<LockKeyhole size={17} />} label="Rejected" value={evidenceStoreState.storedCounts.rejected} />
+      </div>
+      <div className="threshold-box">
+        <span>Pattern learning threshold</span>
+        <strong>
+          {evidenceStoreState.storedCounts.total} of {activeStatus?.threshold ?? 3} stored decisions
+        </strong>
+        <small>{activeStatus ? patternSummary(activeStatus) : "Select a capability to view pattern-learning status."}</small>
+      </div>
+      <div className="status-stack">
+        {capabilityChoices.map((capability) => {
+          const status = getPatternStatus(evidenceStoreState, capability.id);
+          return (
+            <article className="store-capability-status" key={capability.id}>
+              <div>
+                <strong>{capability.label}</strong>
+                <p>{patternSummary(status)}</p>
+              </div>
+              <span className={status.promotedPatternId ? "status-pill promoted" : "status-pill"}>
+                {status.promotedPatternId ? "Pattern promoted" : "Not promoted"}
+              </span>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
 }
 
 function ConnectorPanel({ run }: { run: SeptonRun }) {
@@ -838,11 +896,13 @@ function GraphPanel({ paths }: { paths: GraphPath[] }) {
   );
 }
 
-function EvidencePanel({ run }: { run: SeptonRun }) {
+function EvidencePanel({ run, evidenceStoreState }: { run: SeptonRun; evidenceStoreState: EvidenceStoreState }) {
   const isStored = run.evidence.storageStatus === "stored";
+  const passedConfidenceRules = run.evidence.confidenceRules.filter((rule) => rule.passed);
+  const latestStored = evidenceStoreState.storedEvidence.slice(0, 4);
   const statusText =
     run.evidence.approvalStatus === "rejected"
-      ? "Rejected. No finalized evidence package was stored."
+      ? "Rejected. The evidence package is stored for audit, but it is not promotable for enterprise memory."
       : isStored
         ? "Stored after admin approval."
         : "Not stored yet. Admin approval is required first.";
@@ -863,6 +923,11 @@ function EvidencePanel({ run }: { run: SeptonRun }) {
         <Metric icon={<FileSearch size={17} />} label="Reasoning steps" value={run.evidence.reasoningTrace.length} />
         <Metric icon={<BadgeCheck size={17} />} label="Approval" value={formatLabel(run.evidence.approvalStatus)} />
       </div>
+      <div className="field-grid compact-grid">
+        <Metric icon={<Database size={17} />} label="Stored total" value={evidenceStoreState.storedCounts.total} />
+        <Metric icon={<BadgeCheck size={17} />} label="Approved stored" value={evidenceStoreState.storedCounts.approved} />
+        <Metric icon={<LockKeyhole size={17} />} label="Rejected stored" value={evidenceStoreState.storedCounts.rejected} />
+      </div>
       {run.evidence.reviewedBy && run.evidence.reviewedAt && (
         <div className="review-note">
           <span>Reviewed by {run.evidence.reviewedBy}</span>
@@ -875,13 +940,31 @@ function EvidencePanel({ run }: { run: SeptonRun }) {
           <li key={item}>{item}</li>
         ))}
       </ol>
-      <h3>Confidence rules</h3>
+      <h3>Why Septon is confident</h3>
+      <p className="section-note">
+        {passedConfidenceRules.length > 0
+          ? "These checks explain why the recommendation is backed by strong evidence."
+          : "No confidence drivers passed for this recommendation."}
+      </p>
       <div className="rule-list">
-        {run.evidence.confidenceRules.map((rule) => (
-          <article className={rule.passed ? "rule-row passed" : "rule-row"} key={rule.metric}>
-            <strong>{rule.description}</strong>
+        {run.evidence.confidenceRules.map((rule) => {
+          const confidenceDriver = describeConfidenceRule(rule);
+          return (
+            <article className={rule.passed ? "rule-row passed" : "rule-row"} key={rule.metric}>
+              <strong>{confidenceDriver.title}</strong>
+              <p>{confidenceDriver.explanation}</p>
+            </article>
+          );
+        })}
+      </div>
+      <h3>Stored evidence history</h3>
+      <div className="rule-list">
+        {latestStored.map((evidence) => (
+          <article className="rule-row" key={evidence.id}>
+            <strong>{evidence.id}</strong>
             <p>
-              {rule.metric}: {rule.actualValue} {rule.operator} {rule.threshold}
+              {formatLabel(evidence.capabilityId)} · {formatLabel(evidence.approvalStatus)} ·{" "}
+              {new Date(evidence.createdAt).toLocaleTimeString()}
             </p>
           </article>
         ))}
@@ -890,14 +973,56 @@ function EvidencePanel({ run }: { run: SeptonRun }) {
   );
 }
 
-function LearningPanel({ run, mode }: { run: SeptonRun; mode: "context" | "pattern" }) {
+function describeConfidenceRule(rule: SeptonRun["evidence"]["confidenceRules"][number]): {
+  title: string;
+  explanation: string;
+} {
+  switch (rule.metric) {
+    case "marketSalesDeclinePercentage":
+      return {
+        title: "Severe decline detected in the impacted market",
+        explanation: `The market declined ${Math.abs(rule.actualValue)}%, which is beyond the ${Math.abs(rule.threshold)}% severity threshold.`,
+      };
+    case "nationalDeclineContributionPercentage":
+      return {
+        title: "This market is a major driver of the national decline",
+        explanation: `${rule.actualValue}% of the national decline comes from this market, above the ${rule.threshold}% materiality threshold.`,
+      };
+    case "supportingSourceCount":
+      return {
+        title: "Multiple enterprise systems support the explanation",
+        explanation: `${rule.actualValue} enterprise systems contributed evidence, meeting the minimum requirement of ${rule.threshold}.`,
+      };
+    case "freshLiveRecordCount":
+      return {
+        title: "Fresh live operational data is available",
+        explanation: `${rule.actualValue} live records were pulled into the decision, above the minimum freshness threshold of ${rule.threshold}.`,
+      };
+    default:
+      return {
+        title: rule.description,
+        explanation: `${rule.actualValue} ${rule.operator} ${rule.threshold}`,
+      };
+  }
+}
+
+function LearningPanel({
+  run,
+  evidenceStoreState,
+  mode,
+}: {
+  run: SeptonRun;
+  evidenceStoreState: EvidenceStoreState;
+  mode: "context" | "pattern";
+}) {
   const canLearn = run.evidence.approvalStatus === "approved";
   const serviceName = mode === "context" ? "Context Retrieval Learning" : "Pattern Learning Service";
   const signals = run.learningSignals.filter((signal) => signal.service === serviceName);
   const lockedText =
     mode === "context"
       ? "Context retrieval learning runs only after admin approval."
-      : "Pattern learning runs only after admin approval.";
+      : "Pattern learning waits for 3 stored decisions before promoting an approved pattern into enterprise memory.";
+  const patternStatus = getPatternStatus(evidenceStoreState, run.intent.capabilityId);
 
   return (
     <section className="panel">
@@ -909,7 +1034,12 @@ function LearningPanel({ run, mode }: { run: SeptonRun; mode: "context" | "patte
         mode === "context" ? (
           <ContextRetrievalLearningView evidenceId={run.evidence.id} hints={run.retrievalHints} signals={signals} />
         ) : (
-          <PatternLearningView evidenceId={run.evidence.id} patterns={run.patternArtifacts} signals={signals} />
+          <PatternLearningView
+            evidenceId={run.evidence.id}
+            patterns={run.patternArtifacts}
+            patternStatus={patternStatus}
+            signals={signals}
+          />
         )
       ) : (
         <div className="learning-locked">
@@ -1204,10 +1334,12 @@ function ContextRetrievalLearningView({
 function PatternLearningView({
   evidenceId,
   patterns,
+  patternStatus,
   signals,
 }: {
   evidenceId: string;
   patterns: DecisionPattern[];
+  patternStatus: PatternLearningStatus;
   signals: SeptonRun["learningSignals"];
 }) {
   return (
@@ -1217,12 +1349,24 @@ function PatternLearningView({
         <strong>{evidenceId}</strong>
       </div>
       <div className="learning-stage">
-        <span>Pattern extracted</span>
-        <strong>{patterns.length > 0 ? patterns[0].title : "Awaiting approval"}</strong>
+        <span>Stored decisions observed</span>
+        <strong>
+          {patternStatus.storedObserved} / {patternStatus.threshold}
+        </strong>
+      </div>
+      <div className="learning-stage">
+        <span>Eligible approved decisions</span>
+        <strong>{patternStatus.eligibleApprovedCount}</strong>
       </div>
       <div className="learning-stage">
         <span>Memory write-back</span>
-        <strong>{patterns.length > 0 ? patterns[0].writeBackTarget : "No write-back yet"}</strong>
+        <strong>
+          {patterns.length > 0
+            ? `Promoted from ${patternStatus.selectedEvidenceId ?? evidenceId}`
+            : patternStatus.state === "no_promotable_approval"
+              ? "Threshold reached, no approved decision available"
+              : "Waiting for threshold"}
+        </strong>
       </div>
       {signals.map((signal) => (
         <article className="learning-card" key={signal.service}>
@@ -1230,9 +1374,39 @@ function PatternLearningView({
           <small>{signal.effect}</small>
         </article>
       ))}
+      <div className="learning-status-bar">
+        <strong>{patternSummary(patternStatus)}</strong>
+        {patternStatus.promotedPatternId && <small>Promoted pattern: {patternStatus.promotedPatternId}</small>}
+      </div>
       <DecisionPatternMemoryView patterns={patterns} />
     </div>
   );
+}
+
+function getPatternStatus(evidenceStoreState: EvidenceStoreState, capabilityId: CapabilityId): PatternLearningStatus {
+  return (
+    evidenceStoreState.patternLearningStatusByCapability[capabilityId] ?? {
+      capabilityId,
+      storedObserved: evidenceStoreState.storedCounts.total,
+      eligibleApprovedCount: 0,
+      threshold: 3,
+      thresholdReached: false,
+      state: "waiting_for_threshold",
+    }
+  );
+}
+
+function patternSummary(status: PatternLearningStatus): string {
+  if (!status.thresholdReached) {
+    return `Waiting for threshold: ${status.storedObserved} of ${status.threshold} stored decisions`;
+  }
+  if (status.state === "no_promotable_approval") {
+    return "Threshold reached, but no approved decision is available for promotion";
+  }
+  if (status.promotedPatternId) {
+    return `Pattern promoted to enterprise memory from ${status.selectedEvidenceId}`;
+  }
+  return "Threshold reached. Next approved decision can be promoted to enterprise memory";
 }
 
 function Metric({ icon, label, value }: { icon: ReactNode; label: string; value: string | number }) {
