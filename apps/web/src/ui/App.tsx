@@ -50,12 +50,12 @@ const architectureStatuses = [
   },
   {
     layer: "Enterprise Onboarding",
-    status: "Not started",
+    status: "Not operating",
     summary: "Connector auth, permission setup, and sync policy setup are not modeled yet.",
   },
   {
     layer: "Platform Configuration",
-    status: "Partial",
+    status: "Partial operation",
     summary: "Capability contracts exist; model registry, glossary, feature flags, and approvals are still placeholders.",
   },
   {
@@ -65,12 +65,12 @@ const architectureStatuses = [
   },
   {
     layer: "Knowledge Processing",
-    status: "Implemented",
+    status: "Operating",
     summary: "Raw records become graph nodes, graph edges, and vector-searchable documents.",
   },
   {
     layer: "Curated Enterprise Memory",
-    status: "Partial",
+    status: "Partial operation",
     summary: "The memory layer exists in runtime only; persistent facts, events, and learned patterns come next.",
   },
   {
@@ -80,27 +80,27 @@ const architectureStatuses = [
   },
   {
     layer: "Context Engine",
-    status: "Implemented",
+    status: "Operating",
     summary: "Context bundles include semantic ranking, graph paths, live data, ignored context, and retrieval trace.",
   },
   {
     layer: "Context Intent",
-    status: "Partial",
+    status: "Partial operation",
     summary: "Questions route to structured intent by simple rules; richer entity and timeframe extraction is still needed.",
   },
   {
     layer: "Decision Engine",
-    status: "Partial",
+    status: "Partial operation",
     summary: "Recommendations are generated from retrieved context, with some scenario-specific logic still in place.",
   },
   {
     layer: "Consume",
-    status: "Partial",
+    status: "Partial operation",
     summary: "The web workspace shows the decision flow; feedback capture and approvals are still missing.",
   },
   {
     layer: "Decision Evidence Store",
-    status: "Implemented",
+    status: "Operating",
     summary: "Each run creates an in-memory evidence package with context, reasoning, confidence, and outcome.",
   },
   {
@@ -110,9 +110,16 @@ const architectureStatuses = [
   },
   {
     layer: "Governance & Control",
-    status: "Partial",
+    status: "Partial operation",
     summary: "Confidence, lineage, audit, RBAC, and HITL are shown, but enforcement is mostly simulated.",
   },
+];
+
+const architectureKpis = [
+  { status: "Operating", label: "Operating" },
+  { status: "Partial operation", label: "Partial operation" },
+  { status: "Simulated", label: "Simulated" },
+  { status: "Not operating", label: "Not operating" },
 ];
 
 function formatLabel(value: string): string {
@@ -123,6 +130,8 @@ export function App() {
   const [question, setQuestion] = useState(defaultQuestion);
   const [lastQuestion, setLastQuestion] = useState(defaultQuestion);
   const [runCount, setRunCount] = useState(1);
+  const [showAuditTrail, setShowAuditTrail] = useState(false);
+  const [showHitlApproval, setShowHitlApproval] = useState(false);
   const run = useMemo(() => runSepton(lastQuestion), [lastQuestion, runCount]);
 
   function executeDecision() {
@@ -154,10 +163,27 @@ export function App() {
           <span>RBAC</span>
           <span>Lineage</span>
           <span>Model governance</span>
-          <span>HITL approval</span>
-          <span>Audit trail</span>
+          <button
+            type="button"
+            className={showHitlApproval ? "governance-button active" : "governance-button"}
+            aria-expanded={showHitlApproval}
+            onClick={() => setShowHitlApproval((isVisible) => !isVisible)}
+          >
+            HITL approval
+          </button>
+          <button
+            type="button"
+            className={showAuditTrail ? "governance-button active" : "governance-button"}
+            aria-expanded={showAuditTrail}
+            onClick={() => setShowAuditTrail((isVisible) => !isVisible)}
+          >
+            Audit trail
+          </button>
         </div>
       </header>
+
+      {showHitlApproval && <HitlApprovalNotice run={run} />}
+      {showAuditTrail && <AuditTrailPanel run={run} runCount={runCount} />}
 
       <section className="ask-surface">
         <div className="question-box">
@@ -214,6 +240,134 @@ export function App() {
   );
 }
 
+function HitlApprovalNotice({ run }: { run: SeptonRun }) {
+  const [approvalDecision, setApprovalDecision] = useState<
+    "pending" | "confirming-accept" | "confirming-deny" | "accepted" | "denied"
+  >("pending");
+  const approvalReason =
+    run.intent.capabilityId === "inventory_optimization"
+      ? "Inventory movement and supplier follow-up should be approved before operational execution."
+      : "Promotion guardrails and cross-functional actions should be approved before rollout.";
+  const approver =
+    run.intent.capabilityId === "inventory_optimization" ? "Supply Chain Director" : "COO / Operations Lead";
+  const confidencePercent = Math.round(run.recommendation.confidence * 100);
+
+  const isFinalDecision = approvalDecision === "accepted" || approvalDecision === "denied";
+
+  return (
+    <section className={`hitl-notice ${approvalDecision}`} aria-label="Human in the loop approval notification">
+      <div className="hitl-icon">
+        <ShieldCheck size={20} />
+      </div>
+      <div className="hitl-copy">
+        <span>Human approval required</span>
+        <strong>{run.intent.capabilityName} is awaiting sign-off</strong>
+        <p>
+          {approvalReason} Approval request generated for {approver} with {confidencePercent}% confidence and evidence
+          package {run.evidence.id}.
+        </p>
+      </div>
+      <div className="hitl-meta">
+        <span>{approvalStatusLabel(approvalDecision)}</span>
+        <small>
+          {approvalDecision === "pending"
+            ? `${run.evidence.contextUsed.length} evidence records attached`
+            : `Decision recorded against ${run.evidence.id}`}
+        </small>
+        <div className="hitl-actions">
+          <button
+            type="button"
+            className="hitl-accept"
+            disabled={isFinalDecision}
+            onClick={() => setApprovalDecision(approvalDecision === "confirming-accept" ? "accepted" : "confirming-accept")}
+          >
+            {approvalDecision === "confirming-accept" ? "Confirm rollout" : "Accept"}
+          </button>
+          <button
+            type="button"
+            className="hitl-deny"
+            disabled={isFinalDecision}
+            onClick={() => setApprovalDecision(approvalDecision === "confirming-deny" ? "denied" : "confirming-deny")}
+          >
+            {approvalDecision === "confirming-deny" ? "Confirm denial" : "Deny"}
+          </button>
+        </div>
+        {approvalDecision === "confirming-accept" && (
+          <p className="hitl-confirmation">Confirm rollout to record approval and release the recommended action plan.</p>
+        )}
+        {approvalDecision === "confirming-deny" && (
+          <p className="hitl-confirmation deny">Confirm denial to block rollout and record the rejection reason.</p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function approvalStatusLabel(
+  decision: "pending" | "confirming-accept" | "confirming-deny" | "accepted" | "denied",
+): string {
+  if (decision === "accepted") return "Approved";
+  if (decision === "denied") return "Denied";
+  if (decision === "confirming-accept") return "Confirm rollout";
+  if (decision === "confirming-deny") return "Confirm denial";
+  return "Pending approval";
+}
+
+function AuditTrailPanel({ run, runCount }: { run: SeptonRun; runCount: number }) {
+  const usedBySource = run.evidence.contextUsed.reduce<Record<string, number>>((totals, reference) => {
+    const [source] = reference.split(":");
+    totals[source] = (totals[source] ?? 0) + 1;
+    return totals;
+  }, {});
+
+  const auditedSystems = run.connectorStatuses.map((status) => ({
+    ...status,
+    evidenceCount: usedBySource[status.source] ?? 0,
+  }));
+
+  const auditSteps = [
+    `Run ${runCount} created evidence package ${run.evidence.id}.`,
+    `Capability audited: ${run.intent.capabilityName}.`,
+    `${run.evidence.contextUsed.length} source records were used and ${run.evidence.contextIgnored.length} context types were ignored.`,
+    `Confidence was calculated at ${Math.round(run.evidence.confidence * 100)}% from ${run.evidence.confidenceRules.length} rules.`,
+    `Outcome is currently ${formatLabel(run.evidence.outcome)}.`,
+  ];
+
+  return (
+    <section className="panel audit-panel" aria-label="Audit trail">
+      <div className="panel-heading">
+        <ShieldCheck size={18} />
+        <h2>Audit Trail</h2>
+      </div>
+      <div className="audit-summary">
+        <Metric icon={<Database size={17} />} label="Systems audited" value={auditedSystems.length} />
+        <Metric icon={<FileSearch size={17} />} label="Evidence records" value={run.evidence.contextUsed.length} />
+        <Metric icon={<BadgeCheck size={17} />} label="Evidence package" value={run.evidence.id} />
+      </div>
+      <div className="audit-grid">
+        {auditedSystems.map((system) => (
+          <article className={system.evidenceCount > 0 ? "audit-system used" : "audit-system"} key={system.source}>
+            <div>
+              <strong>{system.source}</strong>
+              <span>{system.evidenceCount > 0 ? "Used in audit" : "Checked"}</span>
+            </div>
+            <p>
+              {system.evidenceCount} evidence records · {system.recordCount} available · {system.syncMode} sync · fresh{" "}
+              {system.freshness} ago
+            </p>
+          </article>
+        ))}
+      </div>
+      <h3>Decision audit log</h3>
+      <ol className="number-list audit-log">
+        {auditSteps.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
 function ArchitectureStatusPanel() {
   const counts = architectureStatuses.reduce<Record<string, number>>((totals, item) => {
     totals[item.status] = (totals[item.status] ?? 0) + 1;
@@ -227,17 +381,13 @@ function ArchitectureStatusPanel() {
         <h2>Architecture Status</h2>
       </div>
       <div className="architecture-summary">
-        <p>
-          Maps the MVP against the target architecture so the team can see what is real, simulated, partial, and still
-          missing.
-        </p>
-        <div className="status-counts" aria-label="Architecture status summary">
-          {["Implemented", "Partial", "Simulated", "Not started"].map((status) => (
-            <span className={`status-chip ${statusClass(status)}`} key={status}>
-              {status}: {counts[status] ?? 0}
-            </span>
-          ))}
-        </div>
+        {architectureKpis.map((item) => (
+          <article className={`status-kpi ${statusClass(item.status)}`} key={item.status}>
+            <span>{item.label}</span>
+            <strong>{counts[item.status] ?? 0}</strong>
+            <small>{item.status}</small>
+          </article>
+        ))}
       </div>
       <div className="architecture-grid">
         {architectureStatuses.map((item) => (
