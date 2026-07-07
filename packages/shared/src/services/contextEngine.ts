@@ -1,6 +1,18 @@
-import type { ContextBundle, ContextHit, ContextType, DecisionIntent, GraphPath, KnowledgeBase, RawRecord } from "../domain/types";
+import type {
+  ContextBundle,
+  ContextHit,
+  ContextRetrievalHint,
+  ContextType,
+  DecisionIntent,
+  DecisionPattern,
+  GraphPath,
+  KnowledgeBase,
+  LearningState,
+  RawRecord,
+} from "../domain/types";
 import { applyAccessControl } from "./accessControl";
 import { getCapability } from "./capabilityRegistry";
+import { getCapabilityLearningState } from "./learningServices";
 import { cosineLikeScore, tokenize } from "./textVector";
 
 const contextPriority: Record<ContextType, number> = {
@@ -30,11 +42,18 @@ const rankingWeights = {
 
 const decayRate = 0.05;
 
-export function assembleContext(intent: DecisionIntent, knowledgeBase: KnowledgeBase): ContextBundle {
+export function assembleContext(
+  intent: DecisionIntent,
+  knowledgeBase: KnowledgeBase,
+  learningState?: LearningState,
+): ContextBundle {
   const capability = getCapability(intent.capabilityId);
   const queryTokens = tokenize(`${intent.question} ${intent.entities.join(" ")} ${capability.requiredContext.join(" ")}`);
   const accessControl = applyAccessControl(knowledgeBase.records);
   const allowedRecordIds = new Set(accessControl.allowedRecordIds);
+  const capabilityLearning = learningState ? getCapabilityLearningState(learningState, intent.capabilityId) : undefined;
+  const appliedPatterns = (capabilityLearning?.patterns ?? []).map((pattern) => ({ ...pattern, appliedInCurrentRun: true }));
+  const appliedHints = (capabilityLearning?.retrievalHints ?? []).map((hint) => ({ ...hint, appliedInCurrentRun: true }));
 
   const vectorHits: ContextHit[] = knowledgeBase.documents
     .filter((document) => allowedRecordIds.has(document.sourceRecordId))
@@ -51,7 +70,15 @@ export function assembleContext(intent: DecisionIntent, knowledgeBase: Knowledge
       const requiredBoost = capability.requiredContext.includes(document.contextType) ? contextPriority[document.contextType] : 0.55;
       const regionBoost = record.region === intent.region ? 0.08 : 0;
       const periodBoost = record.week === intent.period || record.week === "2026-W32" ? 0.08 : 0;
-      const baseRankingScore = semanticScore * freshnessScore * confidenceScore * graphScore * impactMultiplier * requiredBoost;
+      const learningAdjustments = calculateLearningAdjustments(record, document, appliedHints, appliedPatterns);
+      const baseRankingScore =
+        semanticScore *
+        freshnessScore *
+        confidenceScore *
+        graphScore *
+        impactMultiplier *
+        requiredBoost *
+        learningAdjustments.multiplier;
       const score = Number((baseRankingScore + regionBoost + periodBoost).toFixed(4));
       const reasons = [
         capability.requiredContext.includes(document.contextType) ? "capability-required context" : "optional context",
@@ -63,6 +90,7 @@ export function assembleContext(intent: DecisionIntent, knowledgeBase: Knowledge
         `evidence strength ${evidenceStrength.toFixed(2)}`,
         `graph relevance ${graphScore.toFixed(2)}`,
         `business impact ${impactScore.toFixed(2)}`,
+        ...learningAdjustments.reasons,
       ];
       return { record, score, reasons };
     })
@@ -89,6 +117,8 @@ export function assembleContext(intent: DecisionIntent, knowledgeBase: Knowledge
     liveData,
     ignoredContextTypes,
     accessControl,
+    appliedDecisionPatterns: appliedPatterns,
+    appliedRetrievalHints: appliedHints,
     retrievalTrace: [
       `Capability selected: ${capability.name}`,
       ...accessControl.trace,
@@ -96,8 +126,58 @@ export function assembleContext(intent: DecisionIntent, knowledgeBase: Knowledge
       `Vector index searched across ${accessControl.allowedRecordIds.length} role-authorized semantic documents`,
       `Graph traversal linked KPI decline to cities, dayparts, campaigns, suppliers, and incidents`,
       `Live data access refreshed ${liveData.length} freshness-sensitive records`,
+      appliedHints.length > 0
+        ? `Applied ${appliedHints.length} learned retrieval hint${appliedHints.length === 1 ? "" : "s"} from approved evidence`
+        : "No approved retrieval hints were applied in this run",
+      appliedPatterns.length > 0
+        ? `Matched ${appliedPatterns.length} stored decision pattern${appliedPatterns.length === 1 ? "" : "s"} for this capability`
+        : "No stored decision patterns matched this run",
     ],
   };
+}
+
+function calculateLearningAdjustments(
+  record: RawRecord,
+  document: KnowledgeBase["documents"][number],
+  hints: ContextRetrievalHint[],
+  patterns: DecisionPattern[],
+): { multiplier: number; reasons: string[] } {
+  const searchableText = `${record.title} ${record.text} ${document.title} ${document.text}`.toLowerCase();
+  let multiplier = 1;
+  const reasons: string[] = [];
+
+  for (const hint of hints) {
+    if (hint.prioritizedContextTypes.includes(document.contextType)) {
+      multiplier *= 1.18;
+      reasons.push("learned context boost");
+    }
+    if (hint.deprioritizedContextTypes.includes(document.contextType)) {
+      multiplier *= 0.86;
+      reasons.push("learned deprioritization");
+    }
+    if (hint.boostedEntities.some((entity) => searchableText.includes(entity.toLowerCase()))) {
+      multiplier *= 1.12;
+      reasons.push("learned entity boost");
+    }
+  }
+
+  for (const pattern of patterns) {
+    if (pattern.triggerConditions.some((condition) => patternConditionMatches(searchableText, condition))) {
+      multiplier *= 1.1;
+      reasons.push("stored pattern match");
+    }
+  }
+
+  return {
+    multiplier: Number(multiplier.toFixed(4)),
+    reasons,
+  };
+}
+
+function patternConditionMatches(searchableText: string, condition: string): boolean {
+  return tokenize(condition)
+    .filter((token) => token.length > 3)
+    .some((token) => searchableText.includes(token));
 }
 
 function calculateFreshnessScore(week?: string): number {

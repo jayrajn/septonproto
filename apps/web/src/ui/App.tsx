@@ -18,11 +18,12 @@ import {
   ShieldCheck,
   Sparkles,
 } from "lucide-react";
-import { type ReactNode, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import type {
   CapabilityId,
   ContextHit,
   ContextRetrievalHint,
+  LearningState,
   DecisionPattern,
   GraphEdge,
   GraphNode,
@@ -31,7 +32,7 @@ import type {
   VectorDocument,
 } from "../../../../packages/shared/src/domain/types";
 import { approveEvidencePackage, rejectEvidencePackage } from "../../../../packages/shared/src/services/evidenceStore";
-import { buildLearningArtifacts } from "../../../../packages/shared/src/services/learningServices";
+import { createEmptyLearningState, storeApprovedLearning } from "../../../../packages/shared/src/services/learningServices";
 import { runSepton } from "../../../../packages/shared/src/services/septonRuntime";
 
 const defaultQuestion =
@@ -59,25 +60,35 @@ function formatLabel(value: string): string {
 }
 
 export function App() {
+  const questionInputRef = useRef<HTMLTextAreaElement | null>(null);
   const [question, setQuestion] = useState("");
   const [selectedCapabilityId, setSelectedCapabilityId] = useState<CapabilityId | null>(null);
   const [runCount, setRunCount] = useState(0);
   const [run, setRun] = useState<SeptonRun | null>(null);
+  const [learningState, setLearningState] = useState<LearningState>(() => createEmptyLearningState());
   const selectedCapability = useMemo(
     () => capabilityChoices.find((capability) => capability.id === selectedCapabilityId) ?? null,
     [selectedCapabilityId],
   );
 
+  useEffect(() => {
+    const textarea = questionInputRef.current;
+    if (!textarea) return;
+    textarea.style.height = "0px";
+    textarea.style.height = `${textarea.scrollHeight}px`;
+  }, [question]);
+
   function executeDecision() {
     if (!selectedCapabilityId) return;
-    setRun(runSepton(question, selectedCapabilityId));
+    setRun(runSepton(question, selectedCapabilityId, learningState));
     setRunCount((count) => count + 1);
   }
 
   function approveRecommendation() {
     if (!run) return;
     const approvedEvidence = approveEvidencePackage(run.evidence);
-    const learningArtifacts = buildLearningArtifacts(approvedEvidence, run.knowledgeBase);
+    const learningArtifacts = storeApprovedLearning(approvedEvidence, run.knowledgeBase, learningState);
+    setLearningState(learningArtifacts.learningState);
     setRun({
       ...run,
       evidence: approvedEvidence,
@@ -95,12 +106,8 @@ export function App() {
       ...run,
       evidence: rejectedEvidence,
       learningSignals: [],
-      patternArtifacts: [],
-      retrievalHints: [],
-      memorySnapshot: {
-        ...run.memorySnapshot,
-        decisionPatterns: [],
-      },
+      patternArtifacts: run.contextBundle.appliedDecisionPatterns,
+      retrievalHints: run.contextBundle.appliedRetrievalHints,
     });
   }
 
@@ -153,7 +160,12 @@ export function App() {
           </div>
           <div className="step-label">Step 2</div>
           <label htmlFor="coo-question">Ask Septon</label>
-          <textarea id="coo-question" value={question} onChange={(event) => setQuestion(event.target.value)} />
+          <textarea
+            id="coo-question"
+            ref={questionInputRef}
+            value={question}
+            onChange={(event) => setQuestion(event.target.value)}
+          />
           <div className="question-actions">
             <button type="button" onClick={resetDecision} className="ghost-button">
               <RefreshCcw size={16} />
@@ -715,6 +727,8 @@ function intentExplanation(run: SeptonRun): string {
 
 function ContextPanel({ run }: { run: SeptonRun }) {
   const topContextScore = Math.max(...run.contextBundle.vectorHits.map((hit) => hit.score), 0);
+  const appliedHints = run.contextBundle.appliedRetrievalHints;
+  const appliedPatterns = run.contextBundle.appliedDecisionPatterns;
 
   return (
     <section className="panel context-panel">
@@ -739,12 +753,12 @@ function ContextPanel({ run }: { run: SeptonRun }) {
       <NestedDetailSection
         title="What Context Engine reuses from learning"
         summary={
-          run.retrievalHints.length > 0
-            ? `${run.retrievalHints.length} retrieval hint${run.retrievalHints.length === 1 ? "" : "s"} available for future runs`
-            : "No approved retrieval hints stored yet"
+          appliedHints.length > 0 || appliedPatterns.length > 0
+            ? `${appliedHints.length} retrieval hint${appliedHints.length === 1 ? "" : "s"} and ${appliedPatterns.length} pattern${appliedPatterns.length === 1 ? "" : "s"} applied in this run`
+            : "No approved retrieval hints or patterns were applied in this run"
         }
       >
-        <RetrievalHintView hints={run.retrievalHints} />
+        <AppliedLearningView hints={appliedHints} patterns={appliedPatterns} />
       </NestedDetailSection>
       <h3>Graph search used by Context Engine</h3>
       <GraphPanel paths={run.contextBundle.graphPaths} />
@@ -1013,8 +1027,84 @@ function DecisionPatternMemoryView({ patterns }: { patterns: DecisionPattern[] }
     return <div className="empty-detail">No approved decision patterns stored in enterprise memory yet.</div>;
   }
 
+  const patternsByCapability = new Map<CapabilityId, DecisionPattern[]>();
+  for (const pattern of patterns) {
+    const groupedPatterns = patternsByCapability.get(pattern.capabilityId) ?? [];
+    groupedPatterns.push(pattern);
+    patternsByCapability.set(pattern.capabilityId, groupedPatterns);
+  }
+
   return (
     <div className="pattern-memory-list">
+      {Array.from(patternsByCapability.entries()).map(([capabilityId, capabilityPatterns]) => (
+        <section className="pattern-capability-group" key={capabilityId}>
+          <h4>{formatLabel(capabilityId)}</h4>
+          {capabilityPatterns.map((pattern) => (
+            <article className="pattern-card" key={pattern.id}>
+              <div className="pattern-card-header">
+                <span>{pattern.id}</span>
+                <strong>{pattern.title}</strong>
+              </div>
+              <p>{pattern.recommendedReuse}</p>
+              <div className="pattern-chip-row">
+                {pattern.triggerConditions.map((condition) => (
+                  <span key={condition}>{condition}</span>
+                ))}
+              </div>
+              <small>{pattern.writeBackTarget}</small>
+            </article>
+          ))}
+        </section>
+      ))}
+    </div>
+  );
+}
+
+function AppliedLearningView({
+  hints,
+  patterns,
+}: {
+  hints: ContextRetrievalHint[];
+  patterns: DecisionPattern[];
+}) {
+  if (hints.length === 0 && patterns.length === 0) {
+    return <div className="empty-detail">No approved learning artifacts were reused by Context Engine in this run.</div>;
+  }
+
+  return (
+    <div className="hint-list">
+      {hints.map((hint) => (
+        <article className="hint-card" key={hint.id}>
+          <strong>{hint.futureUse}</strong>
+          <p>{hint.explanation}</p>
+          <div className="hint-columns">
+            <div>
+              <span>Applied context boosts</span>
+              <div className="pattern-chip-row">
+                {hint.prioritizedContextTypes.map((type) => (
+                  <span key={type}>{formatLabel(type)}</span>
+                ))}
+              </div>
+            </div>
+            <div>
+              <span>Applied entity boosts</span>
+              <div className="pattern-chip-row">
+                {hint.boostedEntities.map((entity) => (
+                  <span key={entity}>{entity}</span>
+                ))}
+              </div>
+            </div>
+            <div>
+              <span>Deprioritized context</span>
+              <div className="pattern-chip-row">
+                {hint.deprioritizedContextTypes.map((type) => (
+                  <span key={type}>{formatLabel(type)}</span>
+                ))}
+              </div>
+            </div>
+          </div>
+        </article>
+      ))}
       {patterns.map((pattern) => (
         <article className="pattern-card" key={pattern.id}>
           <div className="pattern-card-header">
@@ -1027,7 +1117,7 @@ function DecisionPatternMemoryView({ patterns }: { patterns: DecisionPattern[] }
               <span key={condition}>{condition}</span>
             ))}
           </div>
-          <small>{pattern.writeBackTarget}</small>
+          <small>Applied as pattern match boost in this run</small>
         </article>
       ))}
     </div>

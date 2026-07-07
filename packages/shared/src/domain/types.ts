@@ -164,6 +164,8 @@ export interface ContextBundle {
   liveData: RawRecord[];
   ignoredContextTypes: ContextType[];
   accessControl: AccessControlReport;
+  appliedDecisionPatterns: DecisionPattern[];
+  appliedRetrievalHints: ContextRetrievalHint[];
   retrievalTrace: string[];
 }
 
@@ -219,6 +221,7 @@ export interface DecisionPattern {
   recommendedReuse: string;
   validationState: "candidate" | "validated";
   writeBackTarget: string;
+  appliedInCurrentRun: boolean;
 }
 
 export interface ContextRetrievalHint {
@@ -230,6 +233,7 @@ export interface ContextRetrievalHint {
   supportingEvidenceIds: string[];
   explanation: string;
   futureUse: string;
+  appliedInCurrentRun: boolean;
 }
 
 export interface EnterpriseMemorySnapshot {
@@ -237,6 +241,16 @@ export interface EnterpriseMemorySnapshot {
   relationships: GraphEdge[];
   semanticMemory: VectorDocument[];
   decisionPatterns: DecisionPattern[];
+}
+
+export interface CapabilityLearningState {
+  approvedEvidenceIds: string[];
+  patterns: DecisionPattern[];
+  retrievalHints: ContextRetrievalHint[];
+}
+
+export interface LearningState {
+  byCapability: Partial<Record<CapabilityId, CapabilityLearningState>>;
 }
 
 export interface SeptonRun {

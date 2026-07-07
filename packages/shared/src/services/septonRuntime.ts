@@ -1,17 +1,17 @@
-import type { CapabilityId, SeptonRun } from "../domain/types";
+import type { CapabilityId, LearningState, SeptonRun } from "../domain/types";
 import { syncEnterpriseConnectors } from "./connectors";
 import { assembleContext } from "./contextEngine";
 import { runDecisionWorkflow } from "./decisionEngine";
 import { createEvidencePackage } from "./evidenceStore";
 import { routeDecisionIntent } from "./intentRouter";
 import { buildKnowledgeBase } from "./knowledgeProcessing";
-import { buildInitialMemorySnapshot } from "./learningServices";
+import { buildMemorySnapshot } from "./learningServices";
 
-export function runSepton(question: string, selectedCapabilityId?: CapabilityId): SeptonRun {
+export function runSepton(question: string, selectedCapabilityId?: CapabilityId, learningState?: LearningState): SeptonRun {
   const { records, statuses } = syncEnterpriseConnectors();
   const knowledgeBase = buildKnowledgeBase(records);
   const intent = routeDecisionIntent(question, selectedCapabilityId);
-  const contextBundle = assembleContext(intent, knowledgeBase);
+  const contextBundle = assembleContext(intent, knowledgeBase, learningState);
   const recommendation = runDecisionWorkflow(contextBundle);
   const evidence = createEvidencePackage(contextBundle, recommendation);
 
@@ -23,8 +23,8 @@ export function runSepton(question: string, selectedCapabilityId?: CapabilityId)
     recommendation,
     evidence,
     learningSignals: [],
-    patternArtifacts: [],
-    retrievalHints: [],
-    memorySnapshot: buildInitialMemorySnapshot(knowledgeBase),
+    patternArtifacts: contextBundle.appliedDecisionPatterns,
+    retrievalHints: contextBundle.appliedRetrievalHints,
+    memorySnapshot: buildMemorySnapshot(knowledgeBase, learningState ?? { byCapability: {} }),
   };
 }

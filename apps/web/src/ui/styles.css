@@ -182,13 +182,13 @@ h3 {
 }
 
 .question-box textarea {
-  flex: 1;
   width: 100%;
-  min-height: 118px;
+  min-height: 76px;
   border: 1px solid #c7d2cf;
   border-radius: 8px;
   padding: 14px;
-  resize: vertical;
+  overflow: hidden;
+  resize: none;
   color: #18202b;
   background: #fbfcfa;
   line-height: 1.45;

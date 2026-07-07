@@ -1,32 +1,73 @@
 import type {
+  CapabilityId,
+  CapabilityLearningState,
   ContextRetrievalHint,
   DecisionEvidencePackage,
   DecisionPattern,
   EnterpriseMemorySnapshot,
   KnowledgeBase,
   LearningSignal,
+  LearningState,
 } from "../domain/types";
 
 export interface LearningArtifacts {
   learningSignals: LearningSignal[];
   patternArtifacts: DecisionPattern[];
   retrievalHints: ContextRetrievalHint[];
+}
+
+export interface StoredLearningResult extends LearningArtifacts {
+  learningState: LearningState;
   memorySnapshot: EnterpriseMemorySnapshot;
 }
 
-export function buildInitialMemorySnapshot(knowledgeBase: KnowledgeBase): EnterpriseMemorySnapshot {
+export function createEmptyLearningState(): LearningState {
+  return {
+    byCapability: {},
+  };
+}
+
+export function buildMemorySnapshot(knowledgeBase: KnowledgeBase, learningState: LearningState): EnterpriseMemorySnapshot {
   return {
     entities: knowledgeBase.nodes,
     relationships: knowledgeBase.edges,
     semanticMemory: knowledgeBase.documents,
-    decisionPatterns: [],
+    decisionPatterns: Object.values(learningState.byCapability)
+      .flatMap((state) => state?.patterns ?? [])
+      .map((pattern) => ({ ...pattern, appliedInCurrentRun: false })),
   };
 }
 
-export function buildLearningArtifacts(
+export function storeApprovedLearning(
   evidence: DecisionEvidencePackage,
   knowledgeBase: KnowledgeBase,
-): LearningArtifacts {
+  learningState: LearningState,
+): StoredLearningResult {
+  const artifacts = buildLearningArtifacts(evidence);
+  const capabilityId = evidence.capabilityId;
+  const existingState = getCapabilityLearningState(learningState, capabilityId);
+
+  const nextCapabilityState: CapabilityLearningState = {
+    approvedEvidenceIds: dedupeStrings([...existingState.approvedEvidenceIds, evidence.id]),
+    patterns: mergePatterns(existingState.patterns, artifacts.patternArtifacts),
+    retrievalHints: mergeHints(existingState.retrievalHints, artifacts.retrievalHints),
+  };
+
+  const nextLearningState: LearningState = {
+    byCapability: {
+      ...learningState.byCapability,
+      [capabilityId]: nextCapabilityState,
+    },
+  };
+
+  return {
+    ...artifacts,
+    learningState: nextLearningState,
+    memorySnapshot: buildMemorySnapshot(knowledgeBase, nextLearningState),
+  };
+}
+
+function buildLearningArtifacts(evidence: DecisionEvidencePackage): LearningArtifacts {
   const supportingEvidenceIds = [evidence.id];
 
   if (evidence.capabilityId === "inventory_optimization") {
@@ -37,8 +78,11 @@ export function buildLearningArtifacts(
       boostedEntities: ["Chicago North", "Chicago South", "Joliet DC", "egg patties"],
       deprioritizedContextTypes: ["meeting_note", "weather"],
       supportingEvidenceIds,
-      explanation: "Inventory imbalance, promotion timing, and transfer capacity were the signals that led to the approved recommendation.",
-      futureUse: "Context Engine boosts inventory, forecast, and distribution signals before the next inventory optimization run.",
+      explanation:
+        "Inventory imbalance, promotion timing, and transfer capacity were the signals that led to the approved recommendation.",
+      futureUse:
+        "Context Engine boosts inventory, forecast, and distribution signals before the next inventory optimization run.",
+      appliedInCurrentRun: false,
     };
 
     const pattern: DecisionPattern = {
@@ -51,17 +95,20 @@ export function buildLearningArtifacts(
         "Distribution transfer capacity is available in the launch window",
       ],
       supportingEvidenceIds,
-      recommendedReuse: "Use this pattern to pre-stage transfer plans before promotion week inventory constraints become store stockouts.",
+      recommendedReuse:
+        "Use this pattern to pre-stage transfer plans before promotion week inventory constraints become store stockouts.",
       validationState: "validated",
       writeBackTarget: "Curated Enterprise Memory / Inventory Optimization Patterns",
+      appliedInCurrentRun: false,
     };
 
     return {
       learningSignals: [
         {
           service: "Context Retrieval Learning",
-          update: "Captured that inventory, demand forecast, promotion calendar, and distribution capacity were decisive for this approved recommendation.",
-          effect: "Future inventory optimization retrieval can prioritize stock position and transfer-capacity context first.",
+          update:
+            "Captured that inventory, demand forecast, promotion calendar, and distribution capacity were decisive for this approved recommendation.",
+          effect: "Future inventory optimization retrieval prioritizes stock position and transfer-capacity context first.",
         },
         {
           service: "Pattern Learning Service",
@@ -71,10 +118,6 @@ export function buildLearningArtifacts(
       ],
       patternArtifacts: [pattern],
       retrievalHints: [retrievalHint],
-      memorySnapshot: {
-        ...buildInitialMemorySnapshot(knowledgeBase),
-        decisionPatterns: [pattern],
-      },
     };
   }
 
@@ -85,8 +128,11 @@ export function buildLearningArtifacts(
     boostedEntities: ["Chicago breakfast", "Omega Foods", "mobile ordering", "Breakfast Value Push"],
     deprioritizedContextTypes: ["weather", "meeting_note"],
     supportingEvidenceIds,
-    explanation: "Supply, digital health, and campaign execution were the strongest evidence-backed signals behind the approved root cause recommendation.",
-    futureUse: "Context Engine boosts supply, service, and campaign signals for future breakfast sales decline questions before broader background context.",
+    explanation:
+      "Supply, digital health, and campaign execution were the strongest evidence-backed signals behind the approved root cause recommendation.",
+    futureUse:
+      "Context Engine boosts supply, service, and campaign signals for future breakfast sales decline questions before broader background context.",
+    appliedInCurrentRun: false,
   };
 
   const pattern: DecisionPattern = {
@@ -99,9 +145,11 @@ export function buildLearningArtifacts(
       "Campaign approvals or trafficking slip before launch",
     ],
     supportingEvidenceIds,
-    recommendedReuse: "Use this pattern to approve or block promotion launch readiness when supply, digital health, and campaign execution weaken together.",
+    recommendedReuse:
+      "Use this pattern to approve or block promotion launch readiness when supply, digital health, and campaign execution weaken together.",
     validationState: "validated",
     writeBackTarget: "Curated Enterprise Memory / Root Cause Analysis Patterns",
+    appliedInCurrentRun: false,
   };
 
   return {
@@ -109,7 +157,7 @@ export function buildLearningArtifacts(
       {
         service: "Context Retrieval Learning",
         update: "Captured the approved retrieval behavior for breakfast-led decline investigations.",
-        effect: "Future root cause runs can front-load supply, supplier, and digital evidence instead of treating them as generic context.",
+        effect: "Future root cause runs front-load supply, supplier, and digital evidence instead of treating them as generic context.",
       },
       {
         service: "Pattern Learning Service",
@@ -119,9 +167,40 @@ export function buildLearningArtifacts(
     ],
     patternArtifacts: [pattern],
     retrievalHints: [retrievalHint],
-    memorySnapshot: {
-      ...buildInitialMemorySnapshot(knowledgeBase),
-      decisionPatterns: [pattern],
-    },
   };
+}
+
+export function getCapabilityLearningState(
+  learningState: LearningState,
+  capabilityId: CapabilityId,
+): CapabilityLearningState {
+  return (
+    learningState.byCapability[capabilityId] ?? {
+      approvedEvidenceIds: [],
+      patterns: [],
+      retrievalHints: [],
+    }
+  );
+}
+
+function mergePatterns(existingPatterns: DecisionPattern[], nextPatterns: DecisionPattern[]): DecisionPattern[] {
+  const merged = new Map(existingPatterns.map((pattern) => [pattern.id, { ...pattern, appliedInCurrentRun: false }] as const));
+  for (const pattern of nextPatterns) {
+    merged.set(pattern.id, { ...pattern, appliedInCurrentRun: false });
+  }
+  return Array.from(merged.values());
+}
+
+function mergeHints(existingHints: ContextRetrievalHint[], nextHints: ContextRetrievalHint[]): ContextRetrievalHint[] {
+  const merged = new Map(
+    existingHints.map((hint) => [hint.id, { ...hint, appliedInCurrentRun: false }] as const),
+  );
+  for (const hint of nextHints) {
+    merged.set(hint.id, { ...hint, appliedInCurrentRun: false });
+  }
+  return Array.from(merged.values());
+}
+
+function dedupeStrings(values: string[]): string[] {
+  return Array.from(new Set(values));
 }
