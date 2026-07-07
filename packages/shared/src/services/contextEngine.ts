@@ -1,4 +1,5 @@
 import type { ContextBundle, ContextHit, ContextType, DecisionIntent, GraphPath, KnowledgeBase, RawRecord } from "../domain/types";
+import { applyAccessControl } from "./accessControl";
 import { getCapability } from "./capabilityRegistry";
 import { cosineLikeScore, tokenize } from "./textVector";
 
@@ -16,8 +17,11 @@ const contextPriority: Record<ContextType, number> = {
 export function assembleContext(intent: DecisionIntent, knowledgeBase: KnowledgeBase): ContextBundle {
   const capability = getCapability(intent.capabilityId);
   const queryTokens = tokenize(`${intent.question} ${intent.entities.join(" ")} ${capability.requiredContext.join(" ")}`);
+  const accessControl = applyAccessControl(knowledgeBase.records);
+  const allowedRecordIds = new Set(accessControl.allowedRecordIds);
 
   const vectorHits: ContextHit[] = knowledgeBase.documents
+    .filter((document) => allowedRecordIds.has(document.sourceRecordId))
     .map((document) => {
       const record = knowledgeBase.records.find((item) => item.id === document.sourceRecordId)!;
       const semanticScore = cosineLikeScore(queryTokens, document.tokens);
@@ -38,6 +42,7 @@ export function assembleContext(intent: DecisionIntent, knowledgeBase: Knowledge
 
   const liveData = knowledgeBase.records.filter(
     (record) =>
+      allowedRecordIds.has(record.id) &&
       record.region === intent.region &&
       ["inventory", "supplier_incident", "service_incident", "promotion_calendar"].includes(record.type),
   );
@@ -53,10 +58,12 @@ export function assembleContext(intent: DecisionIntent, knowledgeBase: Knowledge
     graphPaths,
     liveData,
     ignoredContextTypes,
+    accessControl,
     retrievalTrace: [
       `Capability contract selected: ${capability.name}`,
+      ...accessControl.trace,
       `Required context: ${capability.requiredContext.join(", ")}`,
-      `Vector index searched across ${knowledgeBase.documents.length} semantic documents`,
+      `Vector index searched across ${accessControl.allowedRecordIds.length} role-authorized semantic documents`,
       `Graph traversal linked KPI decline to cities, dayparts, campaigns, suppliers, and incidents`,
       `Live data access refreshed ${liveData.length} freshness-sensitive records`,
     ],

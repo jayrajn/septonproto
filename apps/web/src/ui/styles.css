@@ -116,6 +116,61 @@ h3 {
   color: #1f58b8;
 }
 
+.rbac-panel {
+  margin-bottom: 16px;
+}
+
+.rbac-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.rbac-policy {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.25fr;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.rbac-policy article,
+.restricted-record {
+  border: 1px solid #dce5ef;
+  border-radius: 8px;
+  padding: 12px;
+  background: #fbfdff;
+}
+
+.rbac-policy p,
+.restricted-record p {
+  margin: 7px 0 0;
+  color: #50616b;
+  line-height: 1.38;
+}
+
+.restricted-list {
+  display: grid;
+  gap: 8px;
+}
+
+.restricted-record div {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.restricted-record span {
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: #fff5f7;
+  color: #854054;
+  font-size: 0.7rem;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
 .hitl-notice {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
@@ -962,6 +1017,7 @@ h3 {
   }
 
   .connector-grid,
+  .rbac-policy,
   .audit-grid,
   .pipeline-band,
   .architecture-grid {
@@ -980,6 +1036,8 @@ h3 {
   }
 
   .connector-grid,
+  .rbac-summary,
+  .rbac-policy,
   .audit-summary,
   .audit-grid,
   .hitl-notice,

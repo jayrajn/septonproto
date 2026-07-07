@@ -10,6 +10,7 @@ export const enterpriseRecords: RawRecord[] = [
     market: "United States",
     week: "2026-W26",
     businessUnit: "National Sales",
+    accessTags: ["executive", "sales"],
     payload: {
       totalSalesChangePct: -4.2,
       breakfastSalesChangePct: -9.8,
@@ -30,6 +31,7 @@ export const enterpriseRecords: RawRecord[] = [
     city: "Chicago",
     week: "2026-W26",
     businessUnit: "Breakfast",
+    accessTags: ["executive", "sales"],
     payload: {
       salesChangePct: -18.4,
       transactionChangePct: -15.2,
@@ -49,6 +51,7 @@ export const enterpriseRecords: RawRecord[] = [
     city: "Chicago",
     week: "2026-W26",
     businessUnit: "Supply Chain",
+    accessTags: ["executive", "supply_chain", "operations"],
     payload: {
       item: "Egg patties",
       stockoutStores: 71,
@@ -68,6 +71,7 @@ export const enterpriseRecords: RawRecord[] = [
     city: "Chicago",
     week: "2026-W26",
     businessUnit: "Supplier Operations",
+    accessTags: ["executive", "supply_chain", "operations"],
     payload: {
       supplier: "Omega Foods",
       delayedShipments: 14,
@@ -87,6 +91,7 @@ export const enterpriseRecords: RawRecord[] = [
     city: "Chicago",
     week: "2026-W26",
     businessUnit: "Digital",
+    accessTags: ["executive", "digital", "operations"],
     payload: {
       incidentCount: 47,
       degradedMinutes: 92,
@@ -105,6 +110,7 @@ export const enterpriseRecords: RawRecord[] = [
     city: "Chicago",
     week: "2026-W26",
     businessUnit: "Marketing",
+    accessTags: ["executive", "marketing"],
     payload: {
       campaign: "Breakfast Value Push",
       status: "Paused",
@@ -124,6 +130,7 @@ export const enterpriseRecords: RawRecord[] = [
     city: "Chicago",
     week: "2026-W26",
     businessUnit: "Marketing",
+    accessTags: ["executive", "marketing"],
     payload: {
       meeting: "Weekly Growth Standup",
       noteOwner: "US Marketing Ops",
@@ -140,6 +147,7 @@ export const enterpriseRecords: RawRecord[] = [
     market: "United States",
     week: "2026-W32",
     businessUnit: "Marketing",
+    accessTags: ["executive", "marketing"],
     payload: {
       promotion: "August Family Value",
       plannedStart: "2026-08-03",
@@ -157,6 +165,7 @@ export const enterpriseRecords: RawRecord[] = [
     market: "West",
     week: "2026-W26",
     businessUnit: "National Sales",
+    accessTags: ["executive", "sales"],
     payload: {
       salesChangePct: 0.9,
       breakfastSalesChangePct: 0.2,
@@ -174,6 +183,7 @@ export const enterpriseRecords: RawRecord[] = [
     city: "Chicago",
     week: "2026-W26",
     businessUnit: "External Signals",
+    accessTags: ["executive", "external"],
     payload: {
       stormDays: 2,
       commuteTrafficChangePct: -5.1,
@@ -191,6 +201,7 @@ export const enterpriseRecords: RawRecord[] = [
     city: "Chicago",
     week: "2026-W31",
     businessUnit: "Supply Chain",
+    accessTags: ["executive", "supply_chain", "operations"],
     payload: {
       item: "Egg patties",
       storeCluster: "Chicago North",
@@ -211,6 +222,7 @@ export const enterpriseRecords: RawRecord[] = [
     city: "Chicago",
     week: "2026-W31",
     businessUnit: "Supply Chain",
+    accessTags: ["executive", "supply_chain", "operations"],
     payload: {
       item: "Egg patties",
       storeCluster: "Chicago South",
@@ -231,6 +243,7 @@ export const enterpriseRecords: RawRecord[] = [
     city: "Chicago",
     week: "2026-W32",
     businessUnit: "Breakfast",
+    accessTags: ["executive", "sales", "supply_chain"],
     payload: {
       forecastDemandLiftPct: 11,
       expectedEggPattyUnits: 48600,
@@ -249,6 +262,7 @@ export const enterpriseRecords: RawRecord[] = [
     city: "Chicago",
     week: "2026-W31",
     businessUnit: "Distribution",
+    accessTags: ["executive", "supply_chain", "operations"],
     payload: {
       distributionCenter: "Joliet DC",
       availableTransferUnits: 6100,
@@ -256,5 +270,24 @@ export const enterpriseRecords: RawRecord[] = [
       coldChainCapacityPct: 88,
     },
     text: "SAP distribution data shows Joliet DC can transfer 6,100 egg patty units within 48 hours before the promotion. Cold chain capacity is 88%.",
+  },
+  {
+    id: "bq-store-level-finance-margin-detail",
+    source: "BigQuery",
+    type: "sales_kpi",
+    title: "Store-level margin detail restricted to Finance",
+    region: "US",
+    market: "Midwest",
+    city: "Chicago",
+    week: "2026-W26",
+    businessUnit: "Finance",
+    accessTags: ["finance_restricted"],
+    requiredRoles: ["Finance Analyst"],
+    payload: {
+      restrictedMetric: "store margin variance",
+      storeLevelRows: 183,
+      reason: "Detailed finance data restricted to Finance Analyst role",
+    },
+    text: "Restricted BigQuery finance detail includes store-level margin variance for 183 Chicago stores. This record is not available to the COO role.",
   },
 ];
