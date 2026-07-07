@@ -250,7 +250,7 @@ function DecisionSummary({
         <span>{approvalStatusDescription(run.evidence.approvalStatus)}</span>
       </div>
       <div className="recommendation-target">
-        <span>Recommendation for approval</span>
+        <span>What you are approving</span>
         <p className="headline">{run.recommendation.headline}</p>
       </div>
       <div className="confidence">

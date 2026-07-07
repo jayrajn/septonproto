@@ -14,19 +14,15 @@ export function runDecisionWorkflow(bundle: ContextBundle): Recommendation {
     ...bundle.vectorHits.map((hit) => [hit.record.id, hit.record] as const),
     ...bundle.liveData.map((record) => [record.id, record] as const),
   ]);
-  const usSales = recordById.get("bq-us-week-2026-06-22");
-  const chicagoSales = recordById.get("bq-chicago-breakfast-2026-06-22");
   const inventory = recordById.get("sap-egg-inventory-midwest");
   const supplier = recordById.get("sap-supplier-omega-foods-delay");
   const service = recordById.get("servicenow-pos-mobile-midwest");
   const campaign = recordById.get("sf-june-breakfast-campaign-paused");
 
-  const nationalDecline = numberFromPayload(usSales?.payload.totalSalesChangePct);
-  const contribution = numberFromPayload(chicagoSales?.payload.nationalContributionToDeclinePct);
   const confidenceEvaluation = evaluateConfidence(bundle);
 
   return {
-    headline: `US sales declined ${Math.abs(nationalDecline).toFixed(1)}% last week, with Chicago breakfast explaining about ${contribution}% of the national decline.`,
+    headline: `Approve a breakfast promotion readiness gate for August, focused on Chicago supply, mobile ordering stability, and campaign launch readiness.`,
     rootCauses: [
       {
         cause: "Breakfast supply constraint in Chicago",
