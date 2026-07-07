@@ -54,7 +54,7 @@ export function assembleContext(intent: DecisionIntent, knowledgeBase: Knowledge
     liveData,
     ignoredContextTypes,
     retrievalTrace: [
-      `Capability contract selected: ${capability.name}`,
+      `Capability selected: ${capability.name}`,
       `Required context: ${capability.requiredContext.join(", ")}`,
       `Vector index searched across ${knowledgeBase.documents.length} semantic documents`,
       `Graph traversal linked KPI decline to cities, dayparts, campaigns, suppliers, and incidents`,

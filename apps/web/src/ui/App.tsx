@@ -343,24 +343,47 @@ function IntentPanel({ run }: { run: SeptonRun }) {
         <Brain size={18} />
         <h2>Intent + Capability Router</h2>
       </div>
-      <div className="intent-box">
-        <p className="eyebrow">Capability contract</p>
-        <h3>{run.intent.capabilityName}</h3>
-        <p>{run.contextBundle.capability.promptTemplate}</p>
+      <div className="intent-result">
+        <p className="eyebrow">What Septon understood</p>
+        <h3>{intentSummary(run)}</h3>
+        <p>{intentExplanation(run)}</p>
       </div>
       <div className="field-grid">
-        <Metric icon={<Network size={17} />} label="Region" value={run.intent.region} />
+        <Metric icon={<Brain size={17} />} label="Selected capability" value={run.intent.capabilityName} />
         <Metric icon={<Activity size={17} />} label="Period" value={run.intent.period} />
-        <Metric icon={<LockKeyhole size={17} />} label="Learning model" value={run.contextBundle.capability.learningModel} />
+        <Metric icon={<Network size={17} />} label="Market scope" value={run.intent.market} />
       </div>
-      <h3>Required context</h3>
+      <h3>Data Septon will retrieve for this capability</h3>
       <div className="tag-row">
         {run.contextBundle.capability.requiredContext.map((type) => (
             <span key={type}>{formatLabel(type)}</span>
         ))}
       </div>
+      <div className="routing-note">
+        <LockKeyhole size={16} />
+        <span>
+          The capability selection controls the retrieval workflow, validation rules, output format, and evidence schema
+          for this run.
+        </span>
+      </div>
     </section>
   );
+}
+
+function intentSummary(run: SeptonRun): string {
+  if (run.intent.capabilityId === "inventory_optimization") {
+    return "This is an inventory optimization decision.";
+  }
+
+  return "This is a root cause analysis decision.";
+}
+
+function intentExplanation(run: SeptonRun): string {
+  if (run.intent.capabilityId === "inventory_optimization") {
+    return "Septon will look for inventory position, demand signals, promotion timing, and transfer constraints before recommending what stock to move.";
+  }
+
+  return "Septon will look for KPI movement, operational incidents, supplier issues, campaign changes, and supporting notes before recommending what action to approve.";
 }
 
 function ContextPanel({ run }: { run: SeptonRun }) {

@@ -12,7 +12,7 @@ export function createEvidencePackage(bundle: ContextBundle, recommendation: Rec
     contextUsed: bundle.vectorHits.map((hit) => `${hit.record.source}:${hit.record.id}`),
     contextIgnored: bundle.ignoredContextTypes,
     reasoningTrace: [
-      `Capability contract selected: ${bundle.capability.name}.`,
+      `Capability selected: ${bundle.capability.name}.`,
       `Required context constrained retrieval to ${bundle.capability.requiredContext.join(", ")}.`,
       "Graph and vector retrieval assembled the governed context bundle.",
       "Recommendation was validated against live data access context and capability confidence rules.",

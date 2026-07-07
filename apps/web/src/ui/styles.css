@@ -408,7 +408,7 @@ h3 {
 .learning-card p,
 .action-list p,
 .graph-path p,
-.intent-box p {
+.intent-result p {
   margin: 5px 0 0;
   color: #50616b;
   line-height: 1.42;
@@ -565,14 +565,14 @@ h3 {
   overflow-wrap: anywhere;
 }
 
-.intent-box {
+.intent-result {
   margin-top: 16px;
   border-left: 4px solid #1f6fef;
   padding: 12px 14px;
   background: #f4f8ff;
 }
 
-.intent-box h3 {
+.intent-result h3 {
   margin: 0;
   font-size: 1.35rem;
 }
@@ -581,6 +581,26 @@ h3 {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.routing-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 14px;
+  border: 1px solid #dce3df;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #fbfcfa;
+  color: #40535e;
+  font-size: 0.84rem;
+  line-height: 1.4;
+}
+
+.routing-note svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: #1f6fef;
 }
 
 .trace {
