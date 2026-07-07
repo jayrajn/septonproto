@@ -5,8 +5,22 @@ export function routeDecisionIntent(question: string): DecisionIntent {
   const lower = question.toLowerCase();
   let capabilityId: CapabilityId = "root_cause_analysis";
 
+  if (
+    lower.includes("inventory") ||
+    lower.includes("stock") ||
+    lower.includes("replenish") ||
+    lower.includes("rebalance") ||
+    lower.includes("optimize")
+  ) {
+    capabilityId = "inventory_optimization";
+  }
   if (lower.includes("promotion") || lower.includes("august")) {
-    capabilityId = lower.includes("decline") || lower.includes("why") ? "root_cause_analysis" : "promotion_risk_planning";
+    capabilityId =
+      capabilityId === "inventory_optimization"
+        ? "inventory_optimization"
+        : lower.includes("decline") || lower.includes("why")
+          ? "root_cause_analysis"
+          : "promotion_risk_planning";
   }
   if (lower.includes("forecast")) {
     capabilityId = "sales_forecast";
@@ -19,6 +33,8 @@ export function routeDecisionIntent(question: string): DecisionIntent {
     lower.includes("chicago") ? "Chicago" : "",
     lower.includes("august") ? "August Family Value" : "",
     lower.includes("promotion") ? "promotion" : "",
+    lower.includes("inventory") || lower.includes("stock") ? "inventory" : "",
+    lower.includes("egg") ? "egg patties" : "",
   ].filter(Boolean);
   const capability = getCapability(capabilityId);
 
@@ -29,9 +45,12 @@ export function routeDecisionIntent(question: string): DecisionIntent {
     region,
     market,
     period: lower.includes("last week") ? "2026-W26" : "current period",
-    followUpObjective: lower.includes("prevent") || lower.includes("future")
-      ? "Prevent recurrence and prepare the August promotion"
-      : "Explain performance movement",
+    followUpObjective:
+      capabilityId === "inventory_optimization"
+        ? "Optimize inventory placement and reduce shortage risk"
+        : lower.includes("prevent") || lower.includes("future")
+          ? "Prevent recurrence and prepare the August promotion"
+          : "Explain performance movement",
     entities,
   };
 }

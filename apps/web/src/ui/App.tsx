@@ -18,11 +18,18 @@ import {
   Sparkles,
 } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
-import type { ContextHit, GraphPath, SeptonRun } from "../domain/types";
-import { runSepton } from "../services/septonRuntime";
+import type { ContextHit, GraphPath, SeptonRun } from "../../../../packages/shared/src/domain/types";
+import { runSepton } from "../../../../packages/shared/src/services/septonRuntime";
 
 const defaultQuestion =
   "Why did sales in the U.S. decline last week, and what should we do to prevent this from happening in the future or for the next promotion in August?";
+const inventoryQuestion =
+  "How should we optimize egg patty inventory across Chicago stores before the August promotion?";
+
+const sampleQuestions = [
+  { label: "Root cause", question: defaultQuestion },
+  { label: "Inventory optimization", question: inventoryQuestion },
+];
 
 const pipeline = [
   "Connectors",
@@ -56,6 +63,12 @@ export function App() {
     setRunCount((count) => count + 1);
   }
 
+  function useSampleQuestion(nextQuestion: string) {
+    setQuestion(nextQuestion);
+    setLastQuestion(nextQuestion);
+    setRunCount((count) => count + 1);
+  }
+
   return (
     <main className="shell">
       <header className="topbar">
@@ -76,6 +89,13 @@ export function App() {
       <section className="ask-surface">
         <div className="question-box">
           <label htmlFor="coo-question">Ask Septon</label>
+          <div className="sample-row">
+            {sampleQuestions.map((sample) => (
+              <button type="button" className="sample-button" key={sample.label} onClick={() => useSampleQuestion(sample.question)}>
+                {sample.label}
+              </button>
+            ))}
+          </div>
           <textarea id="coo-question" value={question} onChange={(event) => setQuestion(event.target.value)} />
           <div className="question-actions">
             <button type="button" onClick={resetDecision} className="ghost-button">
@@ -146,7 +166,7 @@ function DecisionSummary({ run, runCount }: { run: SeptonRun; runCount: number }
           </article>
         ))}
       </div>
-      <h3>August promotion guardrails</h3>
+      <h3>{run.intent.capabilityId === "inventory_optimization" ? "Inventory optimization plan" : "August promotion guardrails"}</h3>
       <ul className="check-list">
         {run.recommendation.augustPromotionGuardrails.map((item) => (
           <li key={item}>

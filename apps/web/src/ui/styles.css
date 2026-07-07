@@ -121,6 +121,25 @@ h3 {
   font-weight: 800;
 }
 
+.sample-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.sample-button {
+  min-height: 34px;
+  border: 1px solid #cbd9d6;
+  border-radius: 8px;
+  padding: 0 10px;
+  background: #ffffff;
+  color: #24444f;
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
 .question-box textarea {
   flex: 1;
   width: 100%;

@@ -10,7 +10,7 @@ export type ContextType =
   | "promotion_calendar"
   | "weather";
 
-export type CapabilityId = "root_cause_analysis" | "promotion_risk_planning" | "sales_forecast";
+export type CapabilityId = "root_cause_analysis" | "inventory_optimization" | "promotion_risk_planning" | "sales_forecast";
 
 export interface RawRecord {
   id: string;

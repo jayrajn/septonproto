@@ -65,6 +65,47 @@ export const capabilityRegistry: CapabilityContract[] = [
       "Explain the most likely root causes using only governed context. Separate measured evidence from hypothesis and return prevention actions.",
   },
   {
+    id: "inventory_optimization",
+    name: "Inventory Optimization",
+    businessDomains: ["Supply Chain", "Operations", "Sales"],
+    requiredContext: ["inventory", "sales_kpi", "supplier_incident", "promotion_calendar"],
+    confidenceRules: [
+      {
+        metric: "supportingSourceCount",
+        operator: ">=",
+        threshold: 3,
+        weight: 0.65,
+        description: "Inventory recommendation is supported by multiple enterprise systems.",
+      },
+      {
+        metric: "freshLiveRecordCount",
+        operator: ">=",
+        threshold: 3,
+        weight: 0.35,
+        description: "Fresh inventory and distribution records are available.",
+      },
+    ],
+    retrievalStrategy: [
+      "Identify item, market, and planning horizon",
+      "Retrieve current inventory by store cluster",
+      "Compare current inventory against demand forecast and target stock",
+      "Check promotion calendar and distribution constraints",
+      "Generate transfer and replenishment recommendation",
+    ],
+    workflow: [
+      "Receive inventory context bundle",
+      "Calculate surplus and shortage by cluster",
+      "Validate transfer capacity and promotion timing",
+      "Recommend rebalancing actions",
+      "Create decision evidence package",
+    ],
+    outputSchema: ["inventoryPosition", "shortageRisk", "transferPlan", "replenishmentActions", "confidence"],
+    evidenceSchema: ["decisionId", "question", "contextUsed", "inventoryInputs", "transferPlan", "confidence"],
+    learningModel: "capability.inventory_optimization.context_ranker.v1",
+    promptTemplate:
+      "Optimize inventory placement using governed inventory, demand, promotion, and distribution context. Return transfer actions and shortage risk.",
+  },
+  {
     id: "promotion_risk_planning",
     name: "Promotion Risk Planning",
     businessDomains: ["Marketing", "Supply Chain", "Digital"],

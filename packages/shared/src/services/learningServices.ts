@@ -1,6 +1,21 @@
 import type { DecisionEvidencePackage, LearningSignal } from "../domain/types";
 
 export function learnFromEvidence(evidence: DecisionEvidencePackage): LearningSignal[] {
+  if (evidence.capabilityId === "inventory_optimization") {
+    return [
+      {
+        service: "Context Retrieval Learning",
+        update: "Captured that inventory, demand forecast, promotion calendar, and distribution capacity were useful for Inventory Optimization.",
+        effect: "Future inventory optimization retrieval suggestions can prioritize stock position and transfer capacity context.",
+      },
+      {
+        service: "Pattern Learning Service",
+        update: "Created candidate pattern: rebalance overstocked clusters into shortage clusters before promotion demand lift.",
+        effect: "Curated Enterprise Memory can reuse this candidate after validation.",
+      },
+    ];
+  }
+
   return [
     {
       service: "Context Retrieval Learning",
