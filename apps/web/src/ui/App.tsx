@@ -89,8 +89,8 @@ export function App() {
     <main className="shell">
       <header className="topbar">
         <div>
-          <h1 className="app-title">Cepton prototype</h1>
-          <p className="tagline">Context + decision + evidence</p>
+          <h1 className="app-title">Septon</h1>
+          <p className="tagline">Context + Decisions + Evidence</p>
         </div>
         <div className="governance">
           <ShieldCheck size={18} />
