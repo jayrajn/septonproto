@@ -1,29 +1,31 @@
 import type { CapabilityId, DecisionIntent } from "../domain/types";
 import { getCapability } from "./capabilityRegistry";
 
-export function routeDecisionIntent(question: string): DecisionIntent {
+export function routeDecisionIntent(question: string, selectedCapabilityId?: CapabilityId): DecisionIntent {
   const lower = question.toLowerCase();
-  let capabilityId: CapabilityId = "root_cause_analysis";
+  let capabilityId: CapabilityId = selectedCapabilityId ?? "root_cause_analysis";
 
-  if (
-    lower.includes("inventory") ||
-    lower.includes("stock") ||
-    lower.includes("replenish") ||
-    lower.includes("rebalance") ||
-    lower.includes("optimize")
-  ) {
-    capabilityId = "inventory_optimization";
-  }
-  if (lower.includes("promotion") || lower.includes("august")) {
-    capabilityId =
-      capabilityId === "inventory_optimization"
-        ? "inventory_optimization"
-        : lower.includes("decline") || lower.includes("why")
-          ? "root_cause_analysis"
-          : "promotion_risk_planning";
-  }
-  if (lower.includes("forecast")) {
-    capabilityId = "sales_forecast";
+  if (!selectedCapabilityId) {
+    if (
+      lower.includes("inventory") ||
+      lower.includes("stock") ||
+      lower.includes("replenish") ||
+      lower.includes("rebalance") ||
+      lower.includes("optimize")
+    ) {
+      capabilityId = "inventory_optimization";
+    }
+    if (lower.includes("promotion") || lower.includes("august")) {
+      capabilityId =
+        capabilityId === "inventory_optimization"
+          ? "inventory_optimization"
+          : lower.includes("decline") || lower.includes("why")
+            ? "root_cause_analysis"
+            : "promotion_risk_planning";
+    }
+    if (lower.includes("forecast")) {
+      capabilityId = "sales_forecast";
+    }
   }
 
   const region = lower.includes("u.s") || lower.includes("us") || lower.includes("united states") ? "US" : "US";

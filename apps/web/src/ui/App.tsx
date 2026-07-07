@@ -18,7 +18,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
-import type { ContextHit, GraphPath, SeptonRun } from "../../../../packages/shared/src/domain/types";
+import type { CapabilityId, ContextHit, GraphPath, SeptonRun } from "../../../../packages/shared/src/domain/types";
 import { runSepton } from "../../../../packages/shared/src/services/septonRuntime";
 
 const defaultQuestion =
@@ -26,9 +26,19 @@ const defaultQuestion =
 const inventoryQuestion =
   "How should we optimize egg patty inventory across Chicago stores before the August promotion?";
 
-const sampleQuestions = [
-  { label: "Root cause", question: defaultQuestion },
-  { label: "Inventory optimization", question: inventoryQuestion },
+const capabilityChoices: Array<{ id: CapabilityId; label: string; description: string; question: string }> = [
+  {
+    id: "root_cause_analysis",
+    label: "Root Cause Analysis",
+    description: "Explain why sales declined and what to do next.",
+    question: defaultQuestion,
+  },
+  {
+    id: "inventory_optimization",
+    label: "Inventory Optimization",
+    description: "Rebalance stock before demand changes.",
+    question: inventoryQuestion,
+  },
 ];
 
 const pipeline = [
@@ -47,33 +57,40 @@ function formatLabel(value: string): string {
 }
 
 export function App() {
-  const [question, setQuestion] = useState(defaultQuestion);
-  const [lastQuestion, setLastQuestion] = useState(defaultQuestion);
-  const [runCount, setRunCount] = useState(1);
-  const run = useMemo(() => runSepton(lastQuestion), [lastQuestion, runCount]);
+  const [question, setQuestion] = useState("");
+  const [selectedCapabilityId, setSelectedCapabilityId] = useState<CapabilityId | null>(null);
+  const [runCount, setRunCount] = useState(0);
+  const [run, setRun] = useState<SeptonRun | null>(null);
+  const selectedCapability = useMemo(
+    () => capabilityChoices.find((capability) => capability.id === selectedCapabilityId) ?? null,
+    [selectedCapabilityId],
+  );
 
   function executeDecision() {
-    setLastQuestion(question);
+    if (!selectedCapabilityId) return;
+    setRun(runSepton(question, selectedCapabilityId));
     setRunCount((count) => count + 1);
   }
 
   function resetDecision() {
-    setQuestion(defaultQuestion);
-    setLastQuestion(defaultQuestion);
-    setRunCount((count) => count + 1);
+    setQuestion("");
+    setSelectedCapabilityId(null);
+    setRun(null);
+    setRunCount(0);
   }
 
-  function useSampleQuestion(nextQuestion: string) {
-    setQuestion(nextQuestion);
-    setLastQuestion(nextQuestion);
-    setRunCount((count) => count + 1);
+  function selectCapability(capability: (typeof capabilityChoices)[number]) {
+    setSelectedCapabilityId(capability.id);
+    setQuestion(capability.question);
+    setRun(null);
   }
 
   return (
     <main className="shell">
       <header className="topbar">
         <div>
-          <p className="eyebrow">Septon working prototype</p>
+          <h1 className="app-title">Cepton prototype</h1>
+          <p className="tagline">Context + decision + evidence</p>
         </div>
         <div className="governance">
           <ShieldCheck size={18} />
@@ -87,30 +104,39 @@ export function App() {
 
       <section className="ask-surface">
         <div className="question-box">
-          <label htmlFor="coo-question">Ask Septon</label>
-          <div className="sample-row">
-            {sampleQuestions.map((sample) => (
-              <button type="button" className="sample-button" key={sample.label} onClick={() => useSampleQuestion(sample.question)}>
-                {sample.label}
+          <div className="step-label">Step 1</div>
+          <label>Select a capability</label>
+          <div className="capability-row">
+            {capabilityChoices.map((capability) => (
+              <button
+                type="button"
+                className={selectedCapabilityId === capability.id ? "capability-button selected" : "capability-button"}
+                key={capability.id}
+                onClick={() => selectCapability(capability)}
+              >
+                <strong>{capability.label}</strong>
+                <span>{capability.description}</span>
               </button>
             ))}
           </div>
+          <div className="step-label">Step 2</div>
+          <label htmlFor="coo-question">Ask Cepton</label>
           <textarea id="coo-question" value={question} onChange={(event) => setQuestion(event.target.value)} />
           <div className="question-actions">
             <button type="button" onClick={resetDecision} className="ghost-button">
               <RefreshCcw size={16} />
               Reset
             </button>
-            <button type="button" onClick={executeDecision} className="primary-button">
+            <button type="button" onClick={executeDecision} className="primary-button" disabled={!selectedCapabilityId}>
               <Play size={16} />
-              Run decision
+              {selectedCapabilityId ? "Run decision" : "Select capability first"}
             </button>
           </div>
         </div>
-        <DecisionSummary run={run} runCount={runCount} />
+        {run ? <DecisionSummary run={run} runCount={runCount} /> : <EmptyDecisionState selectedCapability={selectedCapability?.label ?? null} />}
       </section>
 
-      <section className="pipeline-band" aria-label="Septon runtime pipeline">
+      <section className="pipeline-band" aria-label="Cepton runtime pipeline">
         {pipeline.map((item, index) => (
           <div className="pipeline-step" key={item}>
             <CircleDot size={16} />
@@ -120,21 +146,46 @@ export function App() {
         ))}
       </section>
 
-      <section className="grid two">
-        <ConnectorPanel run={run} />
-        <IntentPanel run={run} />
-      </section>
+      {run && (
+        <>
+          <section className="grid two">
+            <ConnectorPanel run={run} />
+            <IntentPanel run={run} />
+          </section>
 
-      <section className="grid two wide-left">
-        <ContextPanel run={run} />
-        <GraphPanel paths={run.contextBundle.graphPaths} />
-      </section>
+          <section className="grid two wide-left">
+            <ContextPanel run={run} />
+            <GraphPanel paths={run.contextBundle.graphPaths} />
+          </section>
 
-      <section className="grid two">
-        <EvidencePanel run={run} />
-        <LearningPanel run={run} />
-      </section>
+          <section className="grid two">
+            <EvidencePanel run={run} />
+            <LearningPanel run={run} />
+          </section>
+        </>
+      )}
     </main>
+  );
+}
+
+function EmptyDecisionState({ selectedCapability }: { selectedCapability: string | null }) {
+  return (
+    <section className="answer-panel empty-state">
+      <div className="panel-heading">
+        <Sparkles size={18} />
+        <h2>Ready when configured</h2>
+      </div>
+      <p className="headline">
+        {selectedCapability
+          ? `${selectedCapability} is selected. Review the question, then run the decision.`
+          : "Select a capability first, then run a decision."}
+      </p>
+      <div className="empty-steps">
+        <span>1. Select capability</span>
+        <span>2. Review question</span>
+        <span>3. Run decision</span>
+      </div>
+    </section>
   );
 }
 
