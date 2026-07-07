@@ -620,6 +620,63 @@ h3 {
   padding: 12px;
 }
 
+.graph-summary {
+  display: grid;
+  gap: 6px;
+  margin-top: 16px;
+  border: 1px solid #dce3df;
+  border-radius: 8px;
+  padding: 12px;
+  background: #f4f8ff;
+}
+
+.graph-summary .eyebrow {
+  margin: 0;
+}
+
+.graph-summary span {
+  color: #60717a;
+  line-height: 1.4;
+}
+
+.graph-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  margin-top: 12px;
+  border: 1px solid #cbd9d6;
+  border-radius: 8px;
+  padding: 0 12px;
+  background: #ffffff;
+  color: #24444f;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.graph-chain {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.graph-node-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.graph-node {
+  border: 1px solid #cbd9d6;
+  border-radius: 8px;
+  padding: 7px 9px;
+  background: #eef2ea;
+  color: #23424f;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
 .node-row {
   display: flex;
   flex-wrap: wrap;

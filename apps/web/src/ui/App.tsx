@@ -3,6 +3,8 @@ import {
   ArrowRight,
   BadgeCheck,
   Brain,
+  ChevronDown,
+  ChevronUp,
   CheckCircle2,
   CircleDot,
   Database,
@@ -142,7 +144,7 @@ export function App() {
             ))}
           </div>
           <div className="step-label">Step 2</div>
-          <label htmlFor="coo-question">Ask Cepton</label>
+          <label htmlFor="coo-question">Ask Septon</label>
           <textarea id="coo-question" value={question} onChange={(event) => setQuestion(event.target.value)} />
           <div className="question-actions">
             <button type="button" onClick={resetDecision} className="ghost-button">
@@ -167,7 +169,7 @@ export function App() {
         )}
       </section>
 
-      <section className="pipeline-band" aria-label="Cepton runtime pipeline">
+      <section className="pipeline-band" aria-label="Septon runtime pipeline">
         {pipeline.map((item, index) => (
           <div className="pipeline-step" key={item}>
             <CircleDot size={16} />
@@ -419,25 +421,47 @@ function ContextHitRow({ hit, topScore }: { hit: ContextHit; topScore: number })
 }
 
 function GraphPanel({ paths }: { paths: GraphPath[] }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const selectedPaths = paths.slice(0, 4);
+  const selectedNodeCount = new Set(selectedPaths.flatMap((path) => path.path.map((node) => node.id))).size;
+
   return (
     <section className="panel">
       <div className="panel-heading">
         <GitBranch size={18} />
         <h2>Graph Search</h2>
       </div>
-      <div className="graph-viz">
-        {paths.slice(0, 4).map((path) => (
-          <article className="graph-path" key={path.explanation}>
-            <strong>{path.path[0]?.label}</strong>
-            <div className="node-row">
-              {path.path.slice(1, 4).map((node) => (
-                <span key={node.id}>{node.label}</span>
-              ))}
-            </div>
-            <p>{path.explanation}</p>
-          </article>
-        ))}
+      <div className="graph-summary">
+        <p className="eyebrow">Selected for decision engine</p>
+        <strong>
+          {selectedPaths.length} relationship paths across {selectedNodeCount} business entities
+        </strong>
+        <span>
+          Septon used these graph relationships to connect the question, KPI movement, incidents, campaigns, and
+          operational signals before creating the recommendation.
+        </span>
       </div>
+      <button type="button" className="graph-toggle" onClick={() => setIsExpanded((value) => !value)}>
+        {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+        {isExpanded ? "Hide selected graph" : "Show selected nodes and edges"}
+      </button>
+      {isExpanded && (
+        <div className="graph-viz">
+          {selectedPaths.map((path) => (
+            <article className="graph-path" key={path.explanation}>
+              <div className="graph-chain" aria-label="Selected graph path">
+                {path.path.slice(0, 5).map((node, index) => (
+                  <span className="graph-node-wrap" key={node.id}>
+                    <span className="graph-node">{node.label}</span>
+                    {index < Math.min(path.path.length, 5) - 1 && <ArrowRight size={14} />}
+                  </span>
+                ))}
+              </div>
+              <p>{path.explanation}</p>
+            </article>
+          ))}
+        </div>
+      )}
     </section>
   );
 }
