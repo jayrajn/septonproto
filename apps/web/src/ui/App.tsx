@@ -74,7 +74,6 @@ export function App() {
       <header className="topbar">
         <div>
           <p className="eyebrow">Septon working prototype</p>
-          <h1>COO Context Workspace</h1>
         </div>
         <div className="governance">
           <ShieldCheck size={18} />
