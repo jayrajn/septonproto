@@ -42,6 +42,31 @@ export interface RawRecord {
   text: string;
 }
 
+export type IngestionPattern = "batch_file" | "export" | "s3_landing_zone";
+
+export type BatchStatus = "accepted" | "rejected";
+
+export interface IngestionValidationIssue {
+  recordId: string;
+  field: keyof RawRecord | "payload";
+  message: string;
+}
+
+export interface IngestionBatch {
+  id: string;
+  source: EnterpriseSource;
+  pattern: IngestionPattern;
+  fileName: string;
+  receivedAt: string;
+  readOnly: true;
+  attemptedRecordCount: number;
+  acceptedRecordCount: number;
+  rejectedRecordCount: number;
+  status: BatchStatus;
+  validationIssues: IngestionValidationIssue[];
+  updatesProductionContext: boolean;
+}
+
 export interface GraphNode {
   id: string;
   label: string;
@@ -281,9 +306,16 @@ export interface SeptonRun {
     source: EnterpriseSource;
     connected: boolean;
     recordCount: number;
-    syncMode: "batch" | "stream" | "api";
+    syncMode: "batch";
     freshness: string;
+    readOnly: true;
+    batchId: string;
+    batchStatus: BatchStatus;
+    ingestionPattern: IngestionPattern;
+    rejectedRecordCount: number;
+    updatesProductionContext: boolean;
   }>;
+  ingestionBatches: IngestionBatch[];
   knowledgeBase: KnowledgeBase;
   intent: DecisionIntent;
   contextBundle: ContextBundle;

@@ -8,7 +8,7 @@ import { buildKnowledgeBase } from "./knowledgeProcessing";
 import { buildMemorySnapshot } from "./learningServices";
 
 export function runSepton(question: string, selectedCapabilityId?: CapabilityId, learningState?: LearningState): SeptonRun {
-  const { records, statuses } = syncEnterpriseConnectors();
+  const { records, statuses, batches } = syncEnterpriseConnectors();
   const knowledgeBase = buildKnowledgeBase(records);
   const intent = routeDecisionIntent(question, selectedCapabilityId);
   const contextBundle = assembleContext(intent, knowledgeBase, learningState);
@@ -17,6 +17,7 @@ export function runSepton(question: string, selectedCapabilityId?: CapabilityId,
 
   return {
     connectorStatuses: statuses,
+    ingestionBatches: batches,
     knowledgeBase,
     intent,
     contextBundle,
