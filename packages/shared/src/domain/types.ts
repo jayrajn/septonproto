@@ -67,11 +67,70 @@ export interface IngestionBatch {
   updatesProductionContext: boolean;
 }
 
+export type ExtractedEntityType =
+  | "region"
+  | "city"
+  | "daypart"
+  | "supplier"
+  | "campaign"
+  | "distribution_center"
+  | "product"
+  | "business_unit"
+  | "incident"
+  | "kpi"
+  | "capability";
+
+export interface ExtractedEntity {
+  id: string;
+  label: string;
+  canonicalType: ExtractedEntityType;
+  sourceField: string;
+  sourceRecordId: string;
+}
+
+export interface ExtractedFact {
+  id: string;
+  name: string;
+  value: string | number | boolean;
+  unit: string;
+  category: string;
+  sourceField: string;
+  sourceRecordId: string;
+}
+
+export interface ExtractedEvent {
+  id: string;
+  eventType: string;
+  summary: string;
+  sourceRecordId: string;
+}
+
+export interface ExtractedRelationship {
+  from: string;
+  to: string;
+  label: string;
+  weight: number;
+  sourceField: string;
+  sourceRecordId: string;
+}
+
+export interface KnowledgeExtraction {
+  sourceRecordId: string;
+  classification: ContextType;
+  entities: ExtractedEntity[];
+  facts: ExtractedFact[];
+  events: ExtractedEvent[];
+  relationships: ExtractedRelationship[];
+  trace: string[];
+}
+
+export type GraphPropertyValue = string | number | boolean | string[];
+
 export interface GraphNode {
   id: string;
   label: string;
-  type: "region" | "city" | "daypart" | "supplier" | "campaign" | "incident" | "kpi" | "capability";
-  properties: Record<string, string | number | boolean>;
+  type: ExtractedEntityType;
+  properties: Record<string, GraphPropertyValue>;
 }
 
 export interface GraphEdge {
@@ -96,6 +155,7 @@ export interface KnowledgeBase {
   nodes: GraphNode[];
   edges: GraphEdge[];
   documents: VectorDocument[];
+  extractions: KnowledgeExtraction[];
 }
 
 export interface CapabilityContract {
