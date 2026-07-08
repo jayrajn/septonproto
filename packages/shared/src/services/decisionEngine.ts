@@ -37,13 +37,19 @@ export function runDecisionWorkflow(bundle: ContextBundle): Recommendation {
             : "Reuse the stored August launch playbook and refresh this week's context before final launch approval.",
     rootCauses: [
       {
-        cause: "Breakfast supply constraint in Chicago",
-        impact: `${numberFromPayload(inventory?.payload.stockoutStores)} stores had partial egg item stockouts; Midwest fill rate fell to ${numberFromPayload(inventory?.payload.fillRatePct)}%.`,
+        cause: hasRejectedLearning
+          ? "Previously rejected launch gate should not be reused unchanged"
+          : "Breakfast supply constraint in Chicago",
+        impact: hasRejectedLearning
+          ? `The prior recommendation was rejected, so Septon is keeping the supply evidence but requiring a materially different Chicago recovery path before launch approval.`
+          : `${numberFromPayload(inventory?.payload.stockoutStores)} stores had partial egg item stockouts; Midwest fill rate fell to ${numberFromPayload(inventory?.payload.fillRatePct)}%.`,
         evidence: `${inventory?.source}: ${inventory?.title}. ${supplier?.source}: ${supplier?.title}.`,
         confidence: hasRejectedLearning ? 0.84 : stage >= 3 ? 0.94 : stage === 2 ? 0.92 : 0.91,
       },
       {
-        cause: "Digital ordering degradation during breakfast peak",
+        cause: hasRejectedLearning
+          ? "Store-level recovery evidence is now required"
+          : "Digital ordering degradation during breakfast peak",
         impact:
           hasRejectedLearning
             ? `${numberFromPayload(service?.payload.incidentCount)} mobile incidents still matter, but Septon is reducing the weight of the previously rejected supplier-service-campaign framing and looking for a different prevention path.`
@@ -180,13 +186,19 @@ function runInventoryOptimizationWorkflow(bundle: ContextBundle): Recommendation
             : `Reuse the stored inventory playbook and refresh the transfer using the latest demand and transfer data.`,
     rootCauses: [
       {
-        cause: "Inventory imbalance across Chicago store clusters",
-        impact: `Chicago North has ${excessUnits.toLocaleString()} excess units while Chicago South is short ${shortageUnits.toLocaleString()} units.`,
+        cause: hasRejectedLearning
+          ? "Rejected transfer-first path requires an alternate stock plan"
+          : "Inventory imbalance across Chicago store clusters",
+        impact: hasRejectedLearning
+          ? `The prior transfer-first recommendation was rejected, so Septon is keeping the imbalance evidence but requiring an alternate shortage prevention option before repeating the same move.`
+          : `Chicago North has ${excessUnits.toLocaleString()} excess units while Chicago South is short ${shortageUnits.toLocaleString()} units.`,
         evidence: `${north?.source}: ${north?.title}. ${south?.source}: ${south?.title}.`,
         confidence: hasRejectedLearning ? 0.81 : stage >= 3 ? 0.93 : stage === 2 ? 0.91 : 0.9,
       },
       {
-        cause: "Expected promotion demand increases shortage risk",
+        cause: hasRejectedLearning
+          ? "Demand risk still exists, but the transfer answer is constrained"
+          : "Expected promotion demand increases shortage risk",
         impact:
           hasRejectedLearning
             ? `Breakfast demand is forecast to rise ${demandLift}% during the August promotion, but Septon is suppressing the previously rejected transfer-first framing and forcing a different inventory recommendation path.`

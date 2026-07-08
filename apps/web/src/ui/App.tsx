@@ -158,9 +158,8 @@ export function App() {
     if (!run) return;
     const rejectedEvidence = rejectEvidencePackage(run.evidence);
     const learningArtifacts = storeDecisionOutcome(rejectedEvidence, run.knowledgeBase, learningState, evidenceStoreState);
-    setLearningState(learningArtifacts.learningState);
-    setEvidenceStoreState(learningArtifacts.evidenceStoreState);
-    const nextRun = {
+    const revisedRun = runSepton(question, run.intent.capabilityId, learningArtifacts.learningState);
+    const rejectedRun = {
       ...run,
       evidence: rejectedEvidence,
       learningSignals: learningArtifacts.learningSignals,
@@ -170,8 +169,15 @@ export function App() {
       rejectedRetrievalHints: learningArtifacts.rejectedRetrievalHints,
       memorySnapshot: learningArtifacts.memorySnapshot,
     };
+    const nextRun = {
+      ...revisedRun,
+      learningSignals: learningArtifacts.learningSignals,
+    };
+    setLearningState(learningArtifacts.learningState);
+    setEvidenceStoreState(learningArtifacts.evidenceStoreState);
     setRun(nextRun);
-    setRunHistoryByCapability((history) => replaceLatestRunSnapshot(history, nextRun));
+    setRunCount((count) => count + 1);
+    setRunHistoryByCapability((history) => appendRunSnapshot(replaceLatestRunSnapshot(history, rejectedRun), nextRun));
   }
 
   function resetDecision() {
