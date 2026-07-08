@@ -166,6 +166,7 @@ async function seed() {
     for (const document of knowledgeBase.documents) {
       const rawRecordId = rawRecordIds.get(document.sourceRecordId);
       if (!rawRecordId) continue;
+      const extraction = knowledgeBase.extractions.find((item) => item.sourceRecordId === document.sourceRecordId);
 
       await client.query(
         `
@@ -187,7 +188,16 @@ async function seed() {
           document.title,
           document.text,
           document.tokens,
-          JSON.stringify({ vectorDocumentId: document.id }),
+          JSON.stringify({
+            vectorDocumentId: document.id,
+            extractionCounts: {
+              entities: extraction?.entities.length ?? 0,
+              facts: extraction?.facts.length ?? 0,
+              events: extraction?.events.length ?? 0,
+              relationships: extraction?.relationships.length ?? 0,
+            },
+            extractionTrace: extraction?.trace ?? [],
+          }),
         ],
       );
     }

@@ -8,7 +8,9 @@
     "build": "tsc && vite build --config apps/web/vite.config.ts",
     "preview": "vite preview --config apps/web/vite.config.ts --host 127.0.0.1",
     "db:seed:memory": "tsx scripts/seedCuratedMemory.ts",
-    "db:check:runtime": "tsx scripts/checkPostgresMemoryRuntime.ts"
+    "db:check:runtime": "tsx scripts/checkPostgresMemoryRuntime.ts",
+    "db:check:batch-write": "tsx scripts/checkBatchIngestionWrite.ts",
+    "db:check:batch-memory": "tsx scripts/checkBatchMemoryProcessing.ts"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^4.3.4",

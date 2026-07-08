@@ -12,6 +12,7 @@ import type {
   UserRole,
   VectorDocument,
 } from "../domain/types";
+import { extractKnowledgeFromRecord } from "./knowledgeProcessing";
 
 const { Client } = pg;
 
@@ -102,13 +103,16 @@ export async function loadCuratedEnterpriseMemory(
         ORDER BY raw_records.source_record_id
       `);
 
+    const records = recordResult.rows.map(mapRawRecord);
+
     return {
       ingestionBatches: batchResult.rows.map(mapIngestionBatch),
       knowledgeBase: {
-        records: recordResult.rows.map(mapRawRecord),
+        records,
         nodes: entityResult.rows.map(mapGraphNode),
         edges: relationshipResult.rows.map(mapGraphEdge),
         documents: documentResult.rows.map(mapVectorDocument),
+        extractions: records.map(extractKnowledgeFromRecord),
       },
     };
   } finally {
