@@ -52,6 +52,12 @@ Check the batch write path with one accepted demo batch and one rejected demo ba
 pnpm db:check:batch-write
 ```
 
+Check the accepted-batch knowledge processing path:
+
+```bash
+pnpm db:check:batch-memory
+```
+
 ## MVP Mapping
 
 - `ingestion_batches`: batch files, exports, and S3/file landing-zone drops.
