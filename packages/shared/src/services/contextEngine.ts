@@ -8,11 +8,19 @@ import type {
   GraphPath,
   KnowledgeBase,
   LearningState,
+  NegativeDecisionPattern,
   RawRecord,
 } from "../domain/types";
 import { applyAccessControl } from "./accessControl";
 import { getCapability } from "./capabilityRegistry";
-import { getCapabilityLearningState } from "./learningServices";
+import {
+  getCurrentRunStage,
+  getRunDecisionPatterns,
+  getRunLearningMode,
+  getRunNegativeDecisionPatterns,
+  getRunRejectedRetrievalHints,
+  getRunRetrievalHints,
+} from "./learningServices";
 import { cosineLikeScore, tokenize } from "./textVector";
 
 const contextPriority: Record<ContextType, number> = {
@@ -51,9 +59,12 @@ export function assembleContext(
   const queryTokens = tokenize(`${intent.question} ${intent.entities.join(" ")} ${capability.requiredContext.join(" ")}`);
   const accessControl = applyAccessControl(knowledgeBase.records);
   const allowedRecordIds = new Set(accessControl.allowedRecordIds);
-  const capabilityLearning = learningState ? getCapabilityLearningState(learningState, intent.capabilityId) : undefined;
-  const appliedPatterns = (capabilityLearning?.patterns ?? []).map((pattern) => ({ ...pattern, appliedInCurrentRun: true }));
-  const appliedHints = (capabilityLearning?.retrievalHints ?? []).map((hint) => ({ ...hint, appliedInCurrentRun: true }));
+  const currentRunStage = learningState ? getCurrentRunStage(learningState, intent.capabilityId) : 1;
+  const learningMode = learningState ? getRunLearningMode(learningState, intent.capabilityId) : "none";
+  const appliedPatterns = learningState ? getRunDecisionPatterns(learningState, intent.capabilityId) : [];
+  const appliedHints = learningState ? getRunRetrievalHints(learningState, intent.capabilityId) : [];
+  const appliedNegativePatterns = learningState ? getRunNegativeDecisionPatterns(learningState, intent.capabilityId) : [];
+  const appliedRejectedHints = learningState ? getRunRejectedRetrievalHints(learningState, intent.capabilityId) : [];
 
   const vectorHits: ContextHit[] = knowledgeBase.documents
     .filter((document) => allowedRecordIds.has(document.sourceRecordId))
@@ -70,7 +81,15 @@ export function assembleContext(
       const requiredBoost = capability.requiredContext.includes(document.contextType) ? contextPriority[document.contextType] : 0.55;
       const regionBoost = record.region === intent.region ? 0.08 : 0;
       const periodBoost = record.week === intent.period || record.week === "2026-W32" ? 0.08 : 0;
-      const learningAdjustments = calculateLearningAdjustments(record, document, appliedHints, appliedPatterns);
+      const learningAdjustments = calculateLearningAdjustments(
+        record,
+        document,
+        appliedHints,
+        appliedRejectedHints,
+        appliedPatterns,
+        appliedNegativePatterns,
+        currentRunStage,
+      );
       const baseRankingScore =
         semanticScore *
         freshnessScore *
@@ -112,6 +131,11 @@ export function assembleContext(
   return {
     intent,
     capability,
+    currentRunStage,
+    learningMode,
+    contextChanged: currentRunStage > 1,
+    memoryChangedThisRun: currentRunStage === 3 && appliedPatterns.length > 0,
+    memoryReusedThisRun: currentRunStage === 4 && appliedPatterns.length > 0,
     vectorHits,
     graphPaths,
     liveData,
@@ -119,6 +143,8 @@ export function assembleContext(
     accessControl,
     appliedDecisionPatterns: appliedPatterns,
     appliedRetrievalHints: appliedHints,
+    appliedNegativeDecisionPatterns: appliedNegativePatterns,
+    appliedRejectedRetrievalHints: appliedRejectedHints,
     retrievalTrace: [
       `Capability selected: ${capability.name}`,
       ...accessControl.trace,
@@ -126,12 +152,16 @@ export function assembleContext(
       `Vector index searched across ${accessControl.allowedRecordIds.length} role-authorized semantic documents`,
       `Graph traversal linked KPI decline to cities, dayparts, campaigns, suppliers, and incidents`,
       `Live data access refreshed ${liveData.length} freshness-sensitive records`,
-      appliedHints.length > 0
-        ? `Applied ${appliedHints.length} learned retrieval hint${appliedHints.length === 1 ? "" : "s"} from approved evidence`
-        : "No approved retrieval hints were applied in this run",
-      appliedPatterns.length > 0
-        ? `Matched ${appliedPatterns.length} stored decision pattern${appliedPatterns.length === 1 ? "" : "s"} for this capability`
-        : "No stored decision patterns matched this run",
+      appliedRejectedHints.length > 0 || appliedNegativePatterns.length > 0
+        ? `Negative learning suppressed ${appliedRejectedHints.length} rejected retrieval hint(s) and ${appliedNegativePatterns.length} rejected memory pattern(s).`
+        : "No rejected learning suppressed this run.",
+      currentRunStage === 1
+        ? "Run 1 baseline context was used."
+        : currentRunStage === 2
+          ? `Run 2 changed the context bundle using ${appliedHints.length || "stage-based"} retrieval learning.`
+          : currentRunStage === 3
+            ? "Run 3 changed the context again and activated pattern learning."
+            : "Run 4 changed the context again and reused enterprise memory from run 3.",
     ],
   };
 }
@@ -140,11 +170,31 @@ function calculateLearningAdjustments(
   record: RawRecord,
   document: KnowledgeBase["documents"][number],
   hints: ContextRetrievalHint[],
+  rejectedHints: ContextRetrievalHint[],
   patterns: DecisionPattern[],
+  negativePatterns: NegativeDecisionPattern[],
+  currentRunStage: number,
 ): { multiplier: number; reasons: string[] } {
   const searchableText = `${record.title} ${record.text} ${document.title} ${document.text}`.toLowerCase();
   let multiplier = 1;
   const reasons: string[] = [];
+
+  if (currentRunStage === 2) {
+    if (["inventory", "supplier_incident", "sales_kpi", "campaign"].includes(document.contextType)) {
+      multiplier *= 1.08;
+      reasons.push("run 2 retrieval shift");
+    }
+  } else if (currentRunStage === 3) {
+    if (["inventory", "supplier_incident", "service_incident", "promotion_calendar"].includes(document.contextType)) {
+      multiplier *= 1.14;
+      reasons.push("run 3 retrieval shift");
+    }
+  } else if (currentRunStage === 4) {
+    if (["inventory", "supplier_incident", "service_incident", "campaign", "promotion_calendar"].includes(document.contextType)) {
+      multiplier *= 1.18;
+      reasons.push("run 4 retrieval shift");
+    }
+  }
 
   for (const hint of hints) {
     if (hint.prioritizedContextTypes.includes(document.contextType)) {
@@ -161,10 +211,28 @@ function calculateLearningAdjustments(
     }
   }
 
+  for (const hint of rejectedHints) {
+    if (hint.prioritizedContextTypes.includes(document.contextType)) {
+      multiplier *= 0.82;
+      reasons.push("rejected context suppression");
+    }
+    if (hint.boostedEntities.some((entity) => searchableText.includes(entity.toLowerCase()))) {
+      multiplier *= 0.88;
+      reasons.push("rejected entity suppression");
+    }
+  }
+
   for (const pattern of patterns) {
     if (pattern.triggerConditions.some((condition) => patternConditionMatches(searchableText, condition))) {
-      multiplier *= 1.1;
-      reasons.push("stored pattern match");
+      multiplier *= currentRunStage === 4 ? 1.16 : 1.1;
+      reasons.push(currentRunStage === 4 ? "enterprise memory reuse" : "stored pattern match");
+    }
+  }
+
+  for (const pattern of negativePatterns) {
+    if (pattern.rejectedConditions.some((condition) => patternConditionMatches(searchableText, condition))) {
+      multiplier *= currentRunStage === 4 ? 0.76 : 0.84;
+      reasons.push(currentRunStage === 4 ? "rejected memory block" : "rejected pattern suppression");
     }
   }
 

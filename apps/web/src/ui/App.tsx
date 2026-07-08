@@ -25,6 +25,7 @@ import type {
   ContextRetrievalHint,
   EvidenceStoreState,
   LearningState,
+  NegativeDecisionPattern,
   PatternLearningStatus,
   DecisionPattern,
   GraphEdge,
@@ -37,6 +38,9 @@ import { approveEvidencePackage, rejectEvidencePackage } from "../../../../packa
 import {
   createEmptyEvidenceStoreState,
   createEmptyLearningState,
+  getCapabilityLearningState,
+  getCurrentRunStage,
+  getRunLearningMode,
   storeDecisionOutcome,
 } from "../../../../packages/shared/src/services/learningServices";
 import { runSepton } from "../../../../packages/shared/src/services/septonRuntime";
@@ -65,14 +69,51 @@ function formatLabel(value: string): string {
   return value.replace(/_/g, " ");
 }
 
+type CapabilityRunHistory = Partial<Record<CapabilityId, RunSnapshot[]>>;
+
+type RunSnapshot = {
+  runId: string;
+  stage: number;
+  learningMode: SeptonRun["contextBundle"]["learningMode"];
+  vectorHitIds: string[];
+  liveDataIds: string[];
+  graphPathIds: string[];
+  retrievalHintIds: string[];
+  decisionPatternIds: string[];
+  memoryPatternIds: string[];
+};
+
+type RunChangeSnapshot = {
+  summary: string;
+  addedContextTitles: string[];
+  retainedContextTitles: string[];
+  retrievalDrivenItems: string[];
+  patternDrivenItems: string[];
+  memoryReuseItems: string[];
+};
+
+type MemoryGraphNodeCandidate = {
+  id: string;
+  label: string;
+  kind: string;
+};
+
+type MemoryGraphEdgeCandidate = {
+  from: string;
+  label: string;
+  to: string;
+};
+
 export function App() {
   const questionInputRef = useRef<HTMLTextAreaElement | null>(null);
   const [question, setQuestion] = useState("");
   const [selectedCapabilityId, setSelectedCapabilityId] = useState<CapabilityId | null>(null);
   const [runCount, setRunCount] = useState(0);
   const [run, setRun] = useState<SeptonRun | null>(null);
+  const [showArchitectureFlow, setShowArchitectureFlow] = useState(false);
   const [evidenceStoreState, setEvidenceStoreState] = useState<EvidenceStoreState>(() => createEmptyEvidenceStoreState());
   const [learningState, setLearningState] = useState<LearningState>(() => createEmptyLearningState());
+  const [runHistoryByCapability, setRunHistoryByCapability] = useState<CapabilityRunHistory>({});
   const selectedCapability = useMemo(
     () => capabilityChoices.find((capability) => capability.id === selectedCapabilityId) ?? null,
     [selectedCapabilityId],
@@ -87,7 +128,9 @@ export function App() {
 
   function executeDecision() {
     if (!selectedCapabilityId) return;
-    setRun(runSepton(question, selectedCapabilityId, learningState));
+    const nextRun = runSepton(question, selectedCapabilityId, learningState);
+    setRun(nextRun);
+    setRunHistoryByCapability((history) => appendRunSnapshot(history, nextRun));
     setRunCount((count) => count + 1);
   }
 
@@ -97,14 +140,18 @@ export function App() {
     const learningArtifacts = storeDecisionOutcome(approvedEvidence, run.knowledgeBase, learningState, evidenceStoreState);
     setLearningState(learningArtifacts.learningState);
     setEvidenceStoreState(learningArtifacts.evidenceStoreState);
-    setRun({
+    const nextRun = {
       ...run,
       evidence: approvedEvidence,
       learningSignals: learningArtifacts.learningSignals,
       patternArtifacts: learningArtifacts.patternArtifacts,
       retrievalHints: learningArtifacts.retrievalHints,
+      negativePatternArtifacts: learningArtifacts.negativePatternArtifacts,
+      rejectedRetrievalHints: learningArtifacts.rejectedRetrievalHints,
       memorySnapshot: learningArtifacts.memorySnapshot,
-    });
+    };
+    setRun(nextRun);
+    setRunHistoryByCapability((history) => replaceLatestRunSnapshot(history, nextRun));
   }
 
   function rejectRecommendation() {
@@ -113,14 +160,18 @@ export function App() {
     const learningArtifacts = storeDecisionOutcome(rejectedEvidence, run.knowledgeBase, learningState, evidenceStoreState);
     setLearningState(learningArtifacts.learningState);
     setEvidenceStoreState(learningArtifacts.evidenceStoreState);
-    setRun({
+    const nextRun = {
       ...run,
       evidence: rejectedEvidence,
       learningSignals: learningArtifacts.learningSignals,
       patternArtifacts: learningArtifacts.patternArtifacts,
       retrievalHints: learningArtifacts.retrievalHints,
+      negativePatternArtifacts: learningArtifacts.negativePatternArtifacts,
+      rejectedRetrievalHints: learningArtifacts.rejectedRetrievalHints,
       memorySnapshot: learningArtifacts.memorySnapshot,
-    });
+    };
+    setRun(nextRun);
+    setRunHistoryByCapability((history) => replaceLatestRunSnapshot(history, nextRun));
   }
 
   function resetDecision() {
@@ -128,6 +179,10 @@ export function App() {
     setSelectedCapabilityId(null);
     setRun(null);
     setRunCount(0);
+    setShowArchitectureFlow(false);
+    setEvidenceStoreState(createEmptyEvidenceStoreState());
+    setLearningState(createEmptyLearningState());
+    setRunHistoryByCapability({});
   }
 
   function selectCapability(capability: (typeof capabilityChoices)[number]) {
@@ -153,11 +208,12 @@ export function App() {
         </div>
       </header>
 
-      <section className="ask-surface">
-        <div className="question-box">
+      <section className="top-input-row">
+        <div className="question-box top-card top-card-step slim-step-card">
+          <div className="slim-step-group">
           <div className="step-label">Step 1</div>
           <label>Select a capability</label>
-          <div className="capability-row">
+          <div className="capability-row compact-capability-row">
             {capabilityChoices.map((capability) => (
               <button
                 type="button"
@@ -170,6 +226,8 @@ export function App() {
               </button>
             ))}
           </div>
+          </div>
+          <div className="slim-step-group slim-question-group">
           <div className="step-label">Step 2</div>
           <label htmlFor="coo-question">Ask Septon</label>
           <textarea
@@ -178,7 +236,8 @@ export function App() {
             value={question}
             onChange={(event) => setQuestion(event.target.value)}
           />
-          <div className="question-actions">
+          </div>
+          <div className="question-actions slim-actions">
             <button type="button" onClick={resetDecision} className="ghost-button">
               <RefreshCcw size={16} />
               Reset
@@ -189,7 +248,13 @@ export function App() {
             </button>
           </div>
         </div>
-        <TopEvidenceStoreSummary evidenceStoreState={evidenceStoreState} selectedCapabilityId={selectedCapabilityId} />
+      </section>
+      <section className="ask-surface">
+        <ContextBundleSummary
+          run={run}
+          selectedCapability={selectedCapability?.label ?? null}
+          runHistoryByCapability={runHistoryByCapability}
+        />
         {run ? (
           <DecisionSummary
             run={run}
@@ -200,16 +265,45 @@ export function App() {
         ) : (
           <EmptyDecisionState selectedCapability={selectedCapability?.label ?? null} />
         )}
+        <TopEvidenceStoreSummary
+          evidenceStoreState={evidenceStoreState}
+          run={run}
+          selectedCapabilityId={selectedCapabilityId}
+        />
       </section>
 
-      {run && <RuntimeFlow key={run.evidence.id} run={run} evidenceStoreState={evidenceStoreState} />}
+      {(selectedCapabilityId || run) && (
+        <TopLearningSnapshots
+          run={run}
+          learningState={learningState}
+          evidenceStoreState={evidenceStoreState}
+          selectedCapabilityId={selectedCapabilityId}
+        />
+      )}
+
+      {run && (
+        <section className="behind-scenes">
+          <button
+            type="button"
+            className="behind-scenes-toggle"
+            aria-expanded={showArchitectureFlow}
+            onClick={() => setShowArchitectureFlow((value) => !value)}
+          >
+            <span>
+              <strong>How Septon works behind the scenes</strong>
+              <small>Expand to inspect the architecture flow from onboarding through learning.</small>
+            </span>
+            {showArchitectureFlow ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+          </button>
+          {showArchitectureFlow && <RuntimeFlow key={run.evidence.id} run={run} evidenceStoreState={evidenceStoreState} />}
+        </section>
+      )}
     </main>
   );
 }
 
 function RuntimeFlow({ run, evidenceStoreState }: { run: SeptonRun; evidenceStoreState: EvidenceStoreState }) {
   const activePatternStatus = getPatternStatus(evidenceStoreState, run.intent.capabilityId);
-  const canLearnContext = run.evidence.approvalStatus === "approved";
 
   return (
     <section className="runtime-flow" aria-label="Septon architecture flow">
@@ -271,7 +365,7 @@ function RuntimeFlow({ run, evidenceStoreState }: { run: SeptonRun; evidenceStor
         step="7"
         title="Context Engine"
         icon={<FileSearch size={18} />}
-        summary={`${run.contextBundle.vectorHits.length} ranked context items selected and ${run.retrievalHints.length} learned retrieval hints available`}
+        summary={`Run ${run.contextBundle.currentRunStage}: ${contextModeLabel(run.contextBundle.learningMode)}`}
       >
         <ContextPanel run={run} />
       </CollapsibleRuntimeSection>
@@ -298,7 +392,7 @@ function RuntimeFlow({ run, evidenceStoreState }: { run: SeptonRun; evidenceStor
         step="10A"
         title="Context Retrieval Learning"
         icon={<RefreshCcw size={18} />}
-        summary={canLearnContext ? "Retrieval learning enabled from approved evidence" : "Retrieval learning paused until approval"}
+        summary={retrievalLearningSummary(run.contextBundle.currentRunStage, run.contextBundle.learningMode)}
       >
         <LearningPanel run={run} evidenceStoreState={evidenceStoreState} mode="context" />
       </CollapsibleRuntimeSection>
@@ -389,15 +483,15 @@ function NestedDetailSection({
 
 function EmptyDecisionState({ selectedCapability }: { selectedCapability: string | null }) {
   return (
-    <section className="answer-panel empty-state">
+    <section className="answer-panel empty-state top-card top-card-recommendation">
       <div className="panel-heading">
         <Sparkles size={18} />
-        <h2>Ready when configured</h2>
+        <h2>Decision Engine Recommendation</h2>
       </div>
       <p className="headline">
         {selectedCapability
-          ? `${selectedCapability} is selected. Review the question, then run the decision.`
-          : "Select a capability first, then run a decision."}
+          ? `${selectedCapability} is selected. Review the question, then run the decision to generate the recommendation.`
+          : "Select a capability first, then run the decision to generate the recommendation."}
       </p>
       <div className="empty-steps">
         <span>1. Select capability</span>
@@ -422,7 +516,7 @@ function DecisionSummary({
   const isAwaitingApproval = run.evidence.approvalStatus === "awaiting_admin_approval";
 
   return (
-    <section className="answer-panel">
+    <section className="answer-panel top-card top-card-recommendation">
       <div className="panel-heading">
         <Sparkles size={18} />
         <h2>Decision Engine Recommendation</h2>
@@ -454,9 +548,9 @@ function DecisionSummary({
           </button>
         </div>
       )}
-      <h3>{run.intent.capabilityId === "inventory_optimization" ? "Inventory factors" : "Root cause contributors"}</h3>
+      <h3>{run.intent.capabilityId === "inventory_optimization" ? "Key inventory drivers" : "Root cause contributors"}</h3>
       <div className="root-cause-list">
-        {run.recommendation.rootCauses.slice(0, 3).map((cause) => (
+        {run.recommendation.rootCauses.slice(0, 2).map((cause) => (
           <article className="compact-card" key={cause.cause}>
             <div>
               <strong>{cause.cause}</strong>
@@ -469,9 +563,9 @@ function DecisionSummary({
           </article>
         ))}
       </div>
-      <h3>{run.intent.capabilityId === "inventory_optimization" ? "Inventory optimization plan" : "Preventive actions and guardrails"}</h3>
+      <h3>{run.intent.capabilityId === "inventory_optimization" ? "Recommended inventory actions" : "Preventive actions and guardrails"}</h3>
       <ul className="check-list">
-        {run.recommendation.augustPromotionGuardrails.map((item) => (
+        {run.recommendation.augustPromotionGuardrails.slice(0, 2).map((item) => (
           <li key={item}>
             <CheckCircle2 size={15} />
             {item}
@@ -489,55 +583,469 @@ function approvalStatusLabel(status: SeptonRun["evidence"]["approvalStatus"]): s
 }
 
 function approvalStatusDescription(status: SeptonRun["evidence"]["approvalStatus"]): string {
-  if (status === "approved") return "Evidence is stored. Retrieval learning is enabled, and pattern promotion depends on evidence-store threshold.";
-  if (status === "rejected") return "Evidence is stored for audit, but rejected outcomes do not create retrieval hints or memory patterns.";
+  if (status === "approved") return "Evidence is stored. Septon can reuse approved learning across later runs.";
+  if (status === "rejected") return "Evidence is stored and reused as negative learning so Septon avoids repeating the rejected path on later runs.";
   return "Evidence is not stored until a human validates the recommendation.";
+}
+
+function ContextBundleSummary({
+  run,
+  selectedCapability,
+  runHistoryByCapability,
+}: {
+  run: SeptonRun | null;
+  selectedCapability: string | null;
+  runHistoryByCapability: CapabilityRunHistory;
+}) {
+  const changeSnapshot = run ? getRunChangeSnapshot(run, runHistoryByCapability) : null;
+  const liveRecords = run?.contextBundle.liveData ?? [];
+  const vectorHits = run?.contextBundle.vectorHits ?? [];
+  const graphPaths = run?.contextBundle.graphPaths ?? [];
+  const sapLiveRecord = liveRecords.find((record) => record.source === "SAP" && record.type === "inventory");
+  const retrievalSignals = changeSnapshot?.retrievalDrivenItems.slice(0, 3) ?? [];
+  const storedPatternCount = run?.memorySnapshot.decisionPatterns.length ?? 0;
+  const rejectedHintCount = run?.contextBundle.appliedRejectedRetrievalHints.length ?? 0;
+  const rejectedPatternCount = run?.memorySnapshot.negativeDecisionPatterns.length ?? 0;
+  const bundledItems = [
+    ...liveRecords.slice(0, 2).map((record) => (record.source === "SAP" && record.type === "inventory" ? "SAP egg inventory check" : record.title)),
+    ...vectorHits.slice(0, 2).map((hit) => hit.record.title),
+    ...graphPaths.slice(0, 1).map((path) => path.path.map((node) => node.label).slice(0, 3).join(" -> ")),
+  ].slice(0, 5);
+
+  return (
+    <section className="evidence-summary-panel top-card top-card-context">
+      <div className="panel-heading">
+        <FileSearch size={18} />
+        <h2>Context</h2>
+      </div>
+      {run ? (
+        <>
+          <article className="store-capability-status">
+            <div>
+              <strong>{run.intent.capabilityName}</strong>
+              <p>
+                Run {run.contextBundle.currentRunStage} using {contextModeLabel(run.contextBundle.learningMode)}
+              </p>
+            </div>
+            <span className="status-pill">{run.contextBundle.contextChanged ? "Changed" : "Baseline"}</span>
+          </article>
+          <div className="context-section">
+            <div className="section-headline">
+              <strong>What Context Retrieval Learning is using</strong>
+              <span>{run.contextBundle.contextChanged ? `This run is using ${contextModeLabel(run.contextBundle.learningMode)}.` : "Baseline retrieval only."}</span>
+            </div>
+            <div className="technical-inline-note">
+              <span>Using {run.contextBundle.appliedRetrievalHints.length} retrieval hints</span>
+              <span>Using {storedPatternCount} stored patterns</span>
+              <span>Using {rejectedHintCount} rejected hints</span>
+              <span>Using {rejectedPatternCount} rejected memory items</span>
+            </div>
+            <div className="summary-chip-group">
+              {retrievalSignals.length > 0 ? (
+                retrievalSignals.map((signal) => <span key={signal}>{signal}</span>)
+              ) : (
+                <span>Baseline retrieval only</span>
+              )}
+            </div>
+          </div>
+
+          <div className="context-section">
+            <div className="section-headline">
+              <strong>What is bundled right now</strong>
+              <span>{buildCompactContextSummary(run, sapLiveRecord)}</span>
+            </div>
+            <div className="compact-bundle-grid">
+              {bundledItems.map((item) => (
+                <article className="business-card compact-business-card" key={item}>
+                  <strong>{item}</strong>
+                </article>
+              ))}
+            </div>
+          </div>
+        </>
+      ) : (
+        <>
+          <p className="headline compact-headline">
+            {selectedCapability
+              ? `${selectedCapability} is selected. Septon will assemble the context bundle after you run the decision.`
+              : "Choose a capability first. Septon will assemble a ranked context bundle after you run the decision."}
+          </p>
+          <div className="empty-steps">
+            <span>Capability</span>
+            <span>Context</span>
+            <span>Sources</span>
+          </div>
+        </>
+      )}
+    </section>
+  );
 }
 
 function TopEvidenceStoreSummary({
   evidenceStoreState,
+  run,
   selectedCapabilityId,
 }: {
   evidenceStoreState: EvidenceStoreState;
+  run: SeptonRun | null;
   selectedCapabilityId: CapabilityId | null;
 }) {
-  const activeStatus = selectedCapabilityId ? getPatternStatus(evidenceStoreState, selectedCapabilityId) : null;
+  const activeCapabilityId = selectedCapabilityId ?? "root_cause_analysis";
+  const activeStatus = getPatternStatus(evidenceStoreState, activeCapabilityId);
 
   return (
-    <section className="evidence-summary-panel">
+    <section className="evidence-summary-panel top-card top-card-evidence">
       <div className="panel-heading">
         <ShieldCheck size={18} />
         <h2>Decision Evidence Store</h2>
       </div>
-      <div className="field-grid compact-grid">
-        <Metric icon={<Database size={17} />} label="Stored decisions" value={evidenceStoreState.storedCounts.total} />
-        <Metric icon={<BadgeCheck size={17} />} label="Approved" value={evidenceStoreState.storedCounts.approved} />
-        <Metric icon={<LockKeyhole size={17} />} label="Rejected" value={evidenceStoreState.storedCounts.rejected} />
+      <article className="store-capability-status">
+        <div>
+          <strong>What was stored from this decision</strong>
+          <p>{run?.evidence.storageStatus === "stored" ? run.evidence.id : "Awaiting storage"}</p>
+        </div>
+        <span className="status-pill">{run?.evidence.storageStatus === "stored" ? "Stored" : "Pending"}</span>
+      </article>
+      <div className="field-grid compact-grid compact-grid-two">
+        <Metric icon={<BadgeCheck size={17} />} label="Approval" value={run ? formatLabel(run.evidence.approvalStatus) : "n/a"} />
+        <Metric icon={<Database size={17} />} label="Context used" value={run?.evidence.contextUsed.length ?? 0} />
+        <Metric icon={<FileSearch size={17} />} label="Reasoning steps" value={run?.evidence.reasoningTrace.length ?? 0} />
+        <Metric icon={<LockKeyhole size={17} />} label="Latest stored outcome" value={formatLabel(activeStatus.state)} />
       </div>
-      <div className="threshold-box">
-        <span>Pattern learning threshold</span>
-        <strong>
-          {evidenceStoreState.storedCounts.total} of {activeStatus?.threshold ?? 3} stored decisions
-        </strong>
-        <small>{activeStatus ? patternSummary(activeStatus) : "Select a capability to view pattern-learning status."}</small>
-      </div>
-      <div className="status-stack">
-        {capabilityChoices.map((capability) => {
-          const status = getPatternStatus(evidenceStoreState, capability.id);
-          return (
-            <article className="store-capability-status" key={capability.id}>
-              <div>
-                <strong>{capability.label}</strong>
-                <p>{patternSummary(status)}</p>
-              </div>
-              <span className={status.promotedPatternId ? "status-pill promoted" : "status-pill"}>
-                {status.promotedPatternId ? "Pattern promoted" : "Not promoted"}
-              </span>
-            </article>
-          );
-        })}
+      <div className="context-summary-block">
+        <strong>Stored contents summary</strong>
+        <p>
+          {run?.evidence.storageStatus === "stored"
+            ? `Septon stored the approval outcome, ${run.evidence.contextUsed.length} context references, and ${run.evidence.reasoningTrace.length} reasoning steps for this decision.`
+            : "This decision has not been stored yet because admin approval is still required."}
+        </p>
       </div>
     </section>
+  );
+}
+
+function TopLearningSnapshots({
+  run,
+  learningState,
+  evidenceStoreState,
+  selectedCapabilityId,
+}: {
+  run: SeptonRun | null;
+  learningState: LearningState;
+  evidenceStoreState: EvidenceStoreState;
+  selectedCapabilityId: CapabilityId | null;
+}) {
+  const activeCapabilityId = selectedCapabilityId ?? "root_cause_analysis";
+  const currentStage = run?.contextBundle.currentRunStage ?? getCurrentRunStage(learningState, activeCapabilityId);
+  const activeStatus = getPatternStatus(evidenceStoreState, activeCapabilityId);
+  const currentMode = run?.contextBundle.learningMode ?? getRunLearningMode(learningState, activeCapabilityId);
+  const capabilityState = getCapabilityLearningState(learningState, activeCapabilityId);
+
+  return (
+    <>
+      <section className="learning-snapshot-strip">
+        <article className="evidence-summary-panel learning-snapshot-card learning-snapshot-context">
+          <div className="panel-heading">
+            <RefreshCcw size={18} />
+            <h2>Context Retrieval Learning</h2>
+          </div>
+          <TechnicalLearningGroup
+            title="Learned retrieval hints"
+            content={
+              capabilityState.approvedRetrievalHints.length > 0 ? (
+                <div className="debug-card-list">
+                  {capabilityState.approvedRetrievalHints.map((hint) => (
+                    <article className="debug-card" key={hint.id}>
+                      <strong>{hint.id}</strong>
+                      <div className="debug-grid">
+                        <DebugField label="prioritizedContextTypes" value={hint.prioritizedContextTypes.map(formatLabel)} />
+                        <DebugField label="boostedEntities" value={hint.boostedEntities} />
+                        <DebugField label="deprioritizedContextTypes" value={hint.deprioritizedContextTypes.map(formatLabel)} />
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <div className="empty-detail">No retrieval hints stored for this capability yet.</div>
+              )
+            }
+          />
+          <TechnicalLearningGroup
+            title="Source evidence"
+            content={
+              <div className="debug-grid">
+                <DebugField label="supportingEvidenceIds" value={capabilityState.approvedRetrievalHints.flatMap((hint) => hint.supportingEvidenceIds)} />
+                <DebugField label="currentCapability" value={capabilityLabel(activeCapabilityId)} />
+              </div>
+            }
+          />
+          <TechnicalLearningGroup
+            title="Rejected retrieval hints"
+            content={
+              capabilityState.rejectedRetrievalHints.length > 0 ? (
+                <div className="debug-card-list">
+                  {capabilityState.rejectedRetrievalHints.map((hint) => (
+                    <article className="debug-card rejected-debug-card" key={hint.id}>
+                      <strong>{hint.id}</strong>
+                      <div className="debug-grid">
+                        <DebugField label="suppressedContextTypes" value={hint.prioritizedContextTypes.map(formatLabel)} />
+                        <DebugField label="suppressedEntities" value={hint.boostedEntities} />
+                        <DebugField label="effect" value={hint.futureUse} />
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <div className="empty-detail">No rejected retrieval hints stored for this capability yet.</div>
+              )
+            }
+          />
+          <TechnicalLearningGroup
+            title="Applied in this run"
+            content={
+              <div className="debug-grid">
+                <DebugField label="hintApplied" value={run ? (run.contextBundle.appliedRetrievalHints.length > 0 ? "true" : "false") : "false"} />
+                <DebugField label="learningMode" value={contextModeLabel(currentMode)} />
+              </div>
+            }
+          />
+          <TechnicalLearningGroup
+            title="Forwarded to Context Engine"
+            content={
+              run && (run.contextBundle.appliedRetrievalHints.length > 0 || run.contextBundle.appliedRejectedRetrievalHints.length > 0) ? (
+                <div className="debug-card-list">
+                  {run.contextBundle.appliedRetrievalHints.map((hint) => (
+                    <article className="debug-card" key={hint.id}>
+                      <strong>{hint.id}</strong>
+                      <div className="debug-grid">
+                        <DebugField label="prioritizedContextTypes" value={hint.prioritizedContextTypes.map(formatLabel)} />
+                        <DebugField label="boostedEntities" value={hint.boostedEntities} />
+                        <DebugField label="futureUse" value={hint.futureUse} />
+                      </div>
+                    </article>
+                  ))}
+                  {run.contextBundle.appliedRejectedRetrievalHints.map((hint) => (
+                    <article className="debug-card rejected-debug-card" key={hint.id}>
+                      <strong>{hint.id}</strong>
+                      <div className="debug-grid">
+                        <DebugField label="suppressedContextTypes" value={hint.prioritizedContextTypes.map(formatLabel)} />
+                        <DebugField label="suppressedEntities" value={hint.boostedEntities} />
+                        <DebugField label="futureUse" value={hint.futureUse} />
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <div className="empty-detail">No retrieval hints were forwarded to Context Engine in this run.</div>
+              )
+            }
+          />
+        </article>
+
+        <article className="evidence-summary-panel learning-snapshot-card learning-snapshot-pattern">
+          <div className="panel-heading">
+            <Sparkles size={18} />
+            <h2>Pattern Learning Service</h2>
+          </div>
+          <TechnicalLearningGroup
+            title="Learned decision patterns"
+            content={
+              capabilityState.patterns.length > 0 || capabilityState.candidatePatterns.length > 0 ? (
+                <div className="debug-card-list">
+                  {[...capabilityState.patterns, ...capabilityState.candidatePatterns.filter((candidate) => !capabilityState.patterns.some((stored) => stored.id === candidate.id))].map((pattern) => (
+                    <article className="debug-card" key={pattern.id}>
+                      <strong>{pattern.id}</strong>
+                      <div className="debug-grid">
+                        <DebugField label="title" value={pattern.title} />
+                        <DebugField label="capabilityId" value={pattern.capabilityId} />
+                        <DebugField label="validationState" value={pattern.validationState} />
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <div className="empty-detail">No promotable decision pattern stored yet.</div>
+              )
+            }
+          />
+          <TechnicalLearningGroup
+            title="Rejected negative memory items"
+            content={
+              capabilityState.negativePatterns.length > 0 ? (
+                <div className="debug-card-list">
+                  {capabilityState.negativePatterns.map((pattern) => (
+                    <article className="debug-card rejected-debug-card" key={pattern.id}>
+                      <strong>{pattern.id}</strong>
+                      <div className="debug-grid">
+                        <DebugField label="title" value={pattern.title} />
+                        <DebugField label="rejectionEffect" value={pattern.rejectionEffect} />
+                        <DebugField label="blockedRecommendation" value={pattern.blockedRecommendation} />
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <div className="empty-detail">No rejected memory items stored yet.</div>
+              )
+            }
+          />
+          <TechnicalLearningGroup
+            title="Trigger conditions"
+            content={
+              capabilityState.candidatePatterns.length > 0 || capabilityState.patterns.length > 0 ? (
+                <div className="debug-chip-list">
+                  {[...capabilityState.patterns, ...capabilityState.candidatePatterns].flatMap((pattern) =>
+                    pattern.triggerConditions.map((condition) => (
+                      <span key={`${pattern.id}-${condition}`}>{condition}</span>
+                    )),
+                  )}
+                </div>
+              ) : (
+                <div className="empty-detail">No trigger conditions available yet.</div>
+              )
+            }
+          />
+          <TechnicalLearningGroup
+            title="Supporting evidence"
+            content={
+              <div className="debug-grid">
+                <DebugField
+                  label="supportingEvidenceIds"
+                  value={[...capabilityState.patterns, ...capabilityState.candidatePatterns].flatMap((pattern) => pattern.supportingEvidenceIds)}
+                />
+              </div>
+            }
+          />
+          <TechnicalLearningGroup
+            title="Write-back target"
+            content={
+              <div className="debug-grid">
+                <DebugField
+                  label="memoryTarget"
+                  value={[...capabilityState.patterns, ...capabilityState.candidatePatterns].map((pattern) => pattern.writeBackTarget)}
+                />
+              </div>
+            }
+          />
+          <TechnicalLearningGroup
+            title="Current state"
+            content={
+              <div className="debug-grid">
+                <DebugField label="state" value={activeStatus.state} />
+                <DebugField label="currentRunStage" value={`Run ${currentStage}`} />
+                <DebugField label="reusedThisRun" value={run?.contextBundle.currentRunStage === 4 && run.contextBundle.appliedDecisionPatterns.length > 0 ? "true" : "false"} />
+                <DebugField label="rejectedConstraintActive" value={run?.contextBundle.appliedNegativeDecisionPatterns.length ? "true" : "false"} />
+              </div>
+            }
+          />
+        </article>
+
+        <article className="evidence-summary-panel learning-snapshot-card learning-snapshot-memory">
+          <div className="panel-heading">
+            <Database size={18} />
+            <h2>Enterprise Memory</h2>
+          </div>
+          <TechnicalLearningGroup
+            title="Stored approved decision patterns"
+            content={
+              run?.memorySnapshot.decisionPatterns.length ? (
+                <div className="debug-card-list">
+                  {run.memorySnapshot.decisionPatterns.map((pattern) => (
+                    <article className="debug-card" key={pattern.id}>
+                      <strong>{pattern.id}</strong>
+                      <div className="debug-grid">
+                        <DebugField label="title" value={pattern.title} />
+                        <DebugField label="writeBackTarget" value={pattern.writeBackTarget} />
+                        <DebugField label="state" value={pattern.appliedInCurrentRun ? "reused" : "stored"} />
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <div className="empty-detail">No stored decision patterns are present in enterprise memory yet.</div>
+              )
+            }
+          />
+          <TechnicalLearningGroup
+            title="Stored rejected memory items"
+            content={
+              run?.memorySnapshot.negativeDecisionPatterns.length ? (
+                <div className="debug-card-list">
+                  {run.memorySnapshot.negativeDecisionPatterns.map((pattern) => (
+                    <article className="debug-card rejected-debug-card" key={pattern.id}>
+                      <strong>{pattern.id}</strong>
+                      <div className="debug-grid">
+                        <DebugField label="title" value={pattern.title} />
+                        <DebugField label="blockedRecommendation" value={pattern.blockedRecommendation} />
+                        <DebugField label="state" value={pattern.appliedInCurrentRun ? "active constraint" : "stored"} />
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <div className="empty-detail">No rejected memory items are present in enterprise memory yet.</div>
+              )
+            }
+          />
+          <TechnicalLearningGroup
+            title="Memory graph view"
+            content={<MemoryGraphView patterns={run?.memorySnapshot.decisionPatterns ?? []} negativePatterns={run?.memorySnapshot.negativeDecisionPatterns ?? []} />}
+          />
+          <TechnicalLearningGroup
+            title="Memory reuse state"
+            content={
+              <div className="debug-grid">
+                <DebugField label="memoryChangedThisRun" value={run?.contextBundle.currentRunStage === 3 && (run.memorySnapshot.decisionPatterns.length ?? 0) > 0 ? "true" : "false"} />
+                <DebugField label="memoryReusedThisRun" value={run?.contextBundle.currentRunStage === 4 && ((run.contextBundle.appliedDecisionPatterns.length ?? 0) > 0 || (run.contextBundle.appliedNegativeDecisionPatterns.length ?? 0) > 0) ? "true" : "false"} />
+              </div>
+            }
+          />
+        </article>
+      </section>
+      <ClosedLoopSnapshot />
+    </>
+  );
+}
+
+function TechnicalLearningGroup({ title, content }: { title: string; content: ReactNode }) {
+  return (
+    <section className="technical-learning-group">
+      <strong>{title}</strong>
+      {content}
+    </section>
+  );
+}
+
+function DebugField({ label, value }: { label: string; value: string | string[] }) {
+  const items = Array.isArray(value) ? Array.from(new Set(value)).filter(Boolean) : [value];
+
+  return (
+    <div className="debug-field">
+      <span>{label}</span>
+      {items.length > 1 ? (
+        <div className="debug-chip-list">
+          {items.map((item) => (
+            <small key={item}>{item}</small>
+          ))}
+        </div>
+      ) : (
+        <small>{items[0] || "none"}</small>
+      )}
+    </div>
+  );
+}
+
+function ClosedLoopSnapshot() {
+  return (
+    <div className="closed-loop-strip">
+      <span>Approved decision</span>
+      <span>→</span>
+      <span>Learning</span>
+      <span>→</span>
+      <span>Enterprise memory</span>
+      <span>→</span>
+      <span>Reused context</span>
+    </div>
   );
 }
 
@@ -783,6 +1291,169 @@ function intentExplanation(run: SeptonRun): string {
   return "Septon will look for KPI movement, operational incidents, supplier issues, campaign changes, and supporting notes before recommending what action to approve.";
 }
 
+function capabilityLabel(capabilityId: CapabilityId): string {
+  return capabilityChoices.find((capability) => capability.id === capabilityId)?.label ?? formatLabel(capabilityId);
+}
+
+function createRunSnapshot(run: SeptonRun): RunSnapshot {
+  return {
+    runId: run.evidence.id,
+    stage: run.contextBundle.currentRunStage,
+    learningMode: run.contextBundle.learningMode,
+    vectorHitIds: run.contextBundle.vectorHits.map((hit) => hit.record.id),
+    liveDataIds: run.contextBundle.liveData.map((record) => record.id),
+    graphPathIds: run.contextBundle.graphPaths.map((path) => path.explanation),
+    retrievalHintIds: run.contextBundle.appliedRetrievalHints.map((hint) => hint.id),
+    decisionPatternIds: run.contextBundle.appliedDecisionPatterns.map((pattern) => pattern.id),
+    memoryPatternIds: run.memorySnapshot.decisionPatterns.map((pattern) => pattern.id),
+  };
+}
+
+function appendRunSnapshot(history: CapabilityRunHistory, run: SeptonRun): CapabilityRunHistory {
+  const snapshots = history[run.intent.capabilityId] ?? [];
+  return {
+    ...history,
+    [run.intent.capabilityId]: [...snapshots, createRunSnapshot(run)],
+  };
+}
+
+function replaceLatestRunSnapshot(history: CapabilityRunHistory, run: SeptonRun): CapabilityRunHistory {
+  const snapshots = history[run.intent.capabilityId] ?? [];
+  if (snapshots.length === 0) {
+    return appendRunSnapshot(history, run);
+  }
+
+  return {
+    ...history,
+    [run.intent.capabilityId]: [...snapshots.slice(0, -1), createRunSnapshot(run)],
+  };
+}
+
+function getRunChangeSnapshot(run: SeptonRun, history: CapabilityRunHistory): RunChangeSnapshot {
+  const snapshots = history[run.intent.capabilityId] ?? [];
+  const current = createRunSnapshot(run);
+  const previous = snapshots.length > 1 ? snapshots[snapshots.length - 2] : null;
+  const currentVectorTitles = run.contextBundle.vectorHits.map((hit) => hit.record.title);
+  const previousVectorIds = new Set(previous?.vectorHitIds ?? []);
+  const currentVectorIds = new Set(current.vectorHitIds);
+  const addedHits = run.contextBundle.vectorHits.filter((hit) => !previousVectorIds.has(hit.record.id)).map((hit) => hit.record.title);
+  const retainedHits = run.contextBundle.vectorHits.filter((hit) => previousVectorIds.has(hit.record.id)).map((hit) => hit.record.title);
+  const retrievalDrivenItems = run.contextBundle.appliedRetrievalHints.flatMap((hint) => [
+    ...hint.prioritizedContextTypes.map((type) => `${formatLabel(type)} signals`),
+    ...hint.boostedEntities.map((entity) => `${entity} evidence`),
+  ]);
+  const patternDrivenItems = run.contextBundle.appliedDecisionPatterns.map((pattern) => pattern.title);
+  const previousMemoryIds = new Set(previous?.memoryPatternIds ?? []);
+  const memoryReuseItems = run.memorySnapshot.decisionPatterns
+    .filter((pattern) => current.learningMode === "retrieval_memory" && previousMemoryIds.has(pattern.id))
+    .map((pattern) => pattern.title);
+
+  let summary = "Baseline context. No previous run exists for comparison yet.";
+  if (run.contextBundle.currentRunStage === 2) {
+    summary = `This run elevated ${listOrFallback(retrievalDrivenItems, "the operational signals")} because the previous approved decision showed they mattered.`;
+  } else if (run.contextBundle.currentRunStage === 3) {
+    summary = `This run changed the context again and added pattern influence from ${listOrFallback(patternDrivenItems, "the learned playbook")}.`;
+  } else if (run.contextBundle.currentRunStage === 4) {
+    summary = `This run reused enterprise memory from run 3 and refreshed ${listOrFallback(addedHits, "the latest operational context")}.`;
+  } else if (previous) {
+    summary = `This run retained ${retainedHits.length} prior evidence item${retainedHits.length === 1 ? "" : "s"} and added ${addedHits.length} new one${addedHits.length === 1 ? "" : "s"}.`;
+  }
+
+  return {
+    summary,
+    addedContextTitles: addedHits,
+    retainedContextTitles: retainedHits,
+    retrievalDrivenItems,
+    patternDrivenItems,
+    memoryReuseItems,
+  };
+}
+
+function buildCompactContextSummary(
+  run: SeptonRun,
+  sapLiveRecord?: SeptonRun["contextBundle"]["liveData"][number],
+): string {
+  const liveRecords = run.contextBundle.liveData.length;
+  const vectorHits = run.contextBundle.vectorHits.length;
+  const graphPaths = run.contextBundle.graphPaths.length;
+  const sapNote = sapLiveRecord ? "SAP inventory is included." : "No SAP inventory record matched this run.";
+
+  return `${liveRecords} live checks, ${vectorHits} selected evidence items, and ${graphPaths} graph links are bundled. ${sapNote}`;
+}
+
+function retrievalLearningBusinessSummary(run: SeptonRun, changeSnapshot: RunChangeSnapshot | null): string {
+  if (run.contextBundle.currentRunStage === 1) {
+    return "This run used the baseline context bundle with no learned retrieval adjustments yet.";
+  }
+  return changeSnapshot?.summary ?? retrievalLearningSummary(run.contextBundle.currentRunStage, run.contextBundle.learningMode);
+}
+
+function retrievalLearningReasonSummary(run: SeptonRun, changeSnapshot: RunChangeSnapshot | null): string {
+  const prioritized = changeSnapshot?.retrievalDrivenItems ?? [];
+  if (prioritized.length === 0) {
+    return "Septon is still using the baseline retrieval logic because no approved retrieval hints have been applied yet.";
+  }
+  return `Septon changed the bundle because prior approved decisions showed that ${listOrFallback(prioritized, "these signals")} were useful to explain or prevent the business outcome.`;
+}
+
+function retrievalLearningNextSummary(run: SeptonRun, changeSnapshot: RunChangeSnapshot | null): string {
+  const nextItems = changeSnapshot?.retrievalDrivenItems ?? [];
+  if (run.contextBundle.currentRunStage === 4) {
+    return `Septon is now carrying forward ${listOrFallback(nextItems, "the learned context priorities")} together with stored enterprise memory.`;
+  }
+  return `Septon will keep prioritizing ${listOrFallback(nextItems, "the strongest validated context")} on the next run.`;
+}
+
+function patternLearningWhatSummary(run: SeptonRun | null, status: PatternLearningStatus): string {
+  if (!run || status.currentRunStage === 1) {
+    return "No approved decision has been learned into a reusable playbook yet.";
+  }
+  if (status.currentRunStage === 2) {
+    return "Septon is collecting approved evidence to determine which actions and guardrails should become reusable patterns.";
+  }
+  return `Septon learned a reusable playbook from approved evidence for ${run.intent.capabilityName}.`;
+}
+
+function patternLearningWriteSummary(run: SeptonRun | null, status: PatternLearningStatus): string {
+  if (!run || !status.memoryAvailable) {
+    return "No enterprise-memory write-back has happened yet for this capability.";
+  }
+  if (status.currentRunStage === 3) {
+    return `This run wrote ${listOrFallback(run.memorySnapshot.decisionPatterns.map((pattern) => pattern.title), "a learned playbook")} into curated enterprise memory.`;
+  }
+  return `Enterprise memory already contains ${listOrFallback(run.memorySnapshot.decisionPatterns.map((pattern) => pattern.title), "the stored playbook")} from the earlier approved run.`;
+}
+
+function patternLearningReuseSummary(run: SeptonRun | null, status: PatternLearningStatus): string {
+  if (!run || !status.memoryAvailable) {
+    return "Nothing is being reused yet because no approved enterprise-memory pattern is available.";
+  }
+  if (run.contextBundle.currentRunStage === 4) {
+    return `This run reused ${listOrFallback(run.memorySnapshot.decisionPatterns.map((pattern) => pattern.title), "the stored playbook")} from run 3.`;
+  }
+  return "The newly stored pattern is ready to be reused on the next run.";
+}
+
+function listOrFallback(items: string[], fallback: string): string {
+  const unique = Array.from(new Set(items)).filter(Boolean);
+  if (unique.length === 0) return fallback;
+  return unique.slice(0, 3).join(", ");
+}
+
+function contextModeLabel(mode: SeptonRun["contextBundle"]["learningMode"]): string {
+  if (mode === "retrieval") return "retrieval learning";
+  if (mode === "retrieval_pattern") return "retrieval learning + pattern learning";
+  if (mode === "retrieval_memory") return "retrieval learning + enterprise memory";
+  return "baseline";
+}
+
+function retrievalLearningSummary(stage: number, mode: SeptonRun["contextBundle"]["learningMode"]): string {
+  if (stage === 1) return "Run 1 baseline context";
+  if (stage === 2) return "Run 2 changed the context bundle using retrieval learning";
+  if (stage === 3) return "Run 3 changed the context again and activated pattern learning";
+  return `Run 4 changed the context again using ${contextModeLabel(mode)}`;
+}
+
 function ContextPanel({ run }: { run: SeptonRun }) {
   const topContextScore = Math.max(...run.contextBundle.vectorHits.map((hit) => hit.score), 0);
   const appliedHints = run.contextBundle.appliedRetrievalHints;
@@ -801,6 +1472,14 @@ function ContextPanel({ run }: { run: SeptonRun }) {
             <span>{item}</span>
           </div>
         ))}
+      </div>
+      <div className="approval-status approved">
+        <strong>Run {run.contextBundle.currentRunStage}</strong>
+        <span>
+          {run.contextBundle.contextChanged
+            ? `Context changed using ${contextModeLabel(run.contextBundle.learningMode)}.`
+            : "Baseline context in use."}
+        </span>
       </div>
       <h3>Context used by Septon</h3>
       <div className="hit-list">
@@ -900,9 +1579,10 @@ function EvidencePanel({ run, evidenceStoreState }: { run: SeptonRun; evidenceSt
   const isStored = run.evidence.storageStatus === "stored";
   const passedConfidenceRules = run.evidence.confidenceRules.filter((rule) => rule.passed);
   const latestStored = evidenceStoreState.storedEvidence.slice(0, 4);
+  const status = getPatternStatus(evidenceStoreState, run.intent.capabilityId);
   const statusText =
     run.evidence.approvalStatus === "rejected"
-      ? "Rejected. The evidence package is stored for audit, but it is not promotable for enterprise memory."
+      ? "Rejected. The evidence package is stored and now drives negative learning for later runs."
       : isStored
         ? "Stored after admin approval."
         : "Not stored yet. Admin approval is required first.";
@@ -927,6 +1607,11 @@ function EvidencePanel({ run, evidenceStoreState }: { run: SeptonRun; evidenceSt
         <Metric icon={<Database size={17} />} label="Stored total" value={evidenceStoreState.storedCounts.total} />
         <Metric icon={<BadgeCheck size={17} />} label="Approved stored" value={evidenceStoreState.storedCounts.approved} />
         <Metric icon={<LockKeyhole size={17} />} label="Rejected stored" value={evidenceStoreState.storedCounts.rejected} />
+      </div>
+      <div className="threshold-box">
+        <span>Run progression for {run.intent.capabilityName}</span>
+        <strong>Run {status.currentRunStage} of 4</strong>
+        <small>{patternSummary(status)}</small>
       </div>
       {run.evidence.reviewedBy && run.evidence.reviewedAt && (
         <div className="review-note">
@@ -1015,13 +1700,13 @@ function LearningPanel({
   evidenceStoreState: EvidenceStoreState;
   mode: "context" | "pattern";
 }) {
-  const canLearn = run.evidence.approvalStatus === "approved";
+  const canLearn = run.contextBundle.currentRunStage > 1 || run.evidence.approvalStatus === "approved";
   const serviceName = mode === "context" ? "Context Retrieval Learning" : "Pattern Learning Service";
   const signals = run.learningSignals.filter((signal) => signal.service === serviceName);
   const lockedText =
     mode === "context"
-      ? "Context retrieval learning runs only after admin approval."
-      : "Pattern learning waits for 3 stored decisions before promoting an approved pattern into enterprise memory.";
+      ? "Context retrieval learning becomes more active on each stored run."
+      : "Pattern learning becomes visible on run 3, and run 4 reuses enterprise memory from run 3.";
   const patternStatus = getPatternStatus(evidenceStoreState, run.intent.capabilityId);
 
   return (
@@ -1032,7 +1717,7 @@ function LearningPanel({
       </div>
       {canLearn ? (
         mode === "context" ? (
-          <ContextRetrievalLearningView evidenceId={run.evidence.id} hints={run.retrievalHints} signals={signals} />
+          <ContextRetrievalLearningView evidenceId={run.evidence.id} hints={run.retrievalHints} signals={signals} run={run} />
         ) : (
           <PatternLearningView
             evidenceId={run.evidence.id}
@@ -1052,7 +1737,7 @@ function LearningPanel({
       )}
       {mode === "pattern" && (
         <>
-          <h3>Recommended actions used for pattern learning</h3>
+          <h3>What Septon is learning from this decision</h3>
           <div className="action-list">
             {run.recommendation.actions.map((action) => (
               <article key={action.action}>
@@ -1301,10 +1986,12 @@ function ContextRetrievalLearningView({
   evidenceId,
   hints,
   signals,
+  run,
 }: {
   evidenceId: string;
   hints: ContextRetrievalHint[];
   signals: SeptonRun["learningSignals"];
+  run: SeptonRun;
 }) {
   return (
     <div className="learning-graph">
@@ -1313,12 +2000,12 @@ function ContextRetrievalLearningView({
         <strong>{evidenceId}</strong>
       </div>
       <div className="learning-stage">
-        <span>Retrieval adjustments learned</span>
-        <strong>{hints.length} hint{hints.length === 1 ? "" : "s"}</strong>
+        <span>What changed in context</span>
+        <strong>{run.contextBundle.contextChanged ? contextModeLabel(run.contextBundle.learningMode) : "Baseline"}</strong>
       </div>
       <div className="learning-stage">
         <span>Reused by Context Engine</span>
-        <strong>{hints.length > 0 ? "Future retrieval boosted" : "Awaiting approval"}</strong>
+        <strong>{run.contextBundle.contextChanged ? `Run ${run.contextBundle.currentRunStage} context updated` : "No retrieval reuse yet"}</strong>
       </div>
       {signals.map((signal) => (
         <article className="learning-card" key={signal.service}>
@@ -1351,7 +2038,7 @@ function PatternLearningView({
       <div className="learning-stage">
         <span>Stored decisions observed</span>
         <strong>
-          {patternStatus.storedObserved} / {patternStatus.threshold}
+          {patternStatus.storedObserved} / 4
         </strong>
       </div>
       <div className="learning-stage">
@@ -1359,13 +2046,15 @@ function PatternLearningView({
         <strong>{patternStatus.eligibleApprovedCount}</strong>
       </div>
       <div className="learning-stage">
-        <span>Memory write-back</span>
+        <span>Enterprise memory</span>
         <strong>
-          {patterns.length > 0
-            ? `Promoted from ${patternStatus.selectedEvidenceId ?? evidenceId}`
+          {patternStatus.memoryAvailable
+            ? patternStatus.currentRunStage === 4
+              ? `Reused from ${patternStatus.selectedEvidenceId ?? evidenceId}`
+              : `Written from ${patternStatus.selectedEvidenceId ?? evidenceId}`
             : patternStatus.state === "no_promotable_approval"
-              ? "Threshold reached, no approved decision available"
-              : "Waiting for threshold"}
+              ? "No approved decision available"
+              : "Not written yet"}
         </strong>
       </div>
       {signals.map((signal) => (
@@ -1383,30 +2072,154 @@ function PatternLearningView({
   );
 }
 
+function buildMemoryGraphUpdateView(
+  patterns: DecisionPattern[],
+  negativePatterns: NegativeDecisionPattern[],
+): {
+  nodes: MemoryGraphNodeCandidate[];
+  edges: MemoryGraphEdgeCandidate[];
+} {
+  if (patterns.length === 0 && negativePatterns.length === 0) {
+    return { nodes: [], edges: [] };
+  }
+
+  const nodes: MemoryGraphNodeCandidate[] = [];
+  const edges: MemoryGraphEdgeCandidate[] = [];
+
+  for (const pattern of patterns) {
+    const capabilityNodeId = `capability:${pattern.capabilityId}`;
+    const patternNodeId = `pattern:${pattern.id}`;
+    nodes.push({ id: capabilityNodeId, label: capabilityLabel(pattern.capabilityId), kind: "capability" });
+    nodes.push({ id: patternNodeId, label: pattern.title, kind: "pattern" });
+    edges.push({ from: capabilityNodeId, label: "stores", to: patternNodeId });
+
+    for (const evidenceId of pattern.supportingEvidenceIds) {
+      const evidenceNodeId = `evidence:${evidenceId}`;
+      nodes.push({ id: evidenceNodeId, label: evidenceId, kind: "evidence" });
+      edges.push({ from: patternNodeId, label: "supported by", to: evidenceNodeId });
+    }
+
+    for (const condition of pattern.triggerConditions) {
+      const conditionNodeId = `condition:${pattern.id}:${condition}`;
+      nodes.push({ id: conditionNodeId, label: condition, kind: "trigger" });
+      edges.push({ from: patternNodeId, label: "triggered by", to: conditionNodeId });
+    }
+
+    const targetNodeId = `target:${pattern.id}`;
+    nodes.push({ id: targetNodeId, label: pattern.writeBackTarget, kind: "memory target" });
+    edges.push({ from: patternNodeId, label: "writes to", to: targetNodeId });
+  }
+
+  for (const pattern of negativePatterns) {
+    const capabilityNodeId = `capability:${pattern.capabilityId}`;
+    const patternNodeId = `rejected-pattern:${pattern.id}`;
+    nodes.push({ id: capabilityNodeId, label: capabilityLabel(pattern.capabilityId), kind: "capability" });
+    nodes.push({ id: patternNodeId, label: pattern.title, kind: "rejected pattern" });
+    edges.push({ from: capabilityNodeId, label: "blocks via", to: patternNodeId });
+
+    for (const evidenceId of pattern.supportingEvidenceIds) {
+      const evidenceNodeId = `evidence:${evidenceId}`;
+      nodes.push({ id: evidenceNodeId, label: evidenceId, kind: "evidence" });
+      edges.push({ from: patternNodeId, label: "rejected by", to: evidenceNodeId });
+    }
+
+    for (const condition of pattern.rejectedConditions) {
+      const conditionNodeId = `rejected-condition:${pattern.id}:${condition}`;
+      nodes.push({ id: conditionNodeId, label: condition, kind: "rejected condition" });
+      edges.push({ from: patternNodeId, label: "blocks when", to: conditionNodeId });
+    }
+
+    const targetNodeId = `rejected-target:${pattern.id}`;
+    nodes.push({ id: targetNodeId, label: pattern.writeBackTarget, kind: "memory target" });
+    edges.push({ from: patternNodeId, label: "writes to", to: targetNodeId });
+  }
+
+  return {
+    nodes: Array.from(new Map(nodes.map((node) => [node.id, node])).values()),
+    edges,
+  };
+}
+
+function MemoryGraphView({
+  patterns,
+  negativePatterns,
+}: {
+  patterns: DecisionPattern[];
+  negativePatterns: NegativeDecisionPattern[];
+}) {
+  const graph = buildMemoryGraphUpdateView(patterns, negativePatterns);
+
+  if (graph.nodes.length === 0) {
+    return <div className="empty-detail">No derived memory graph updates are available yet.</div>;
+  }
+
+  return (
+    <div className="memory-graph-view">
+      <div className="memory-graph-note">Derived memory update view. This prototype is not mutating the underlying knowledge graph database.</div>
+      <div className="debug-card-list">
+        <article className="debug-card">
+          <strong>New memory node candidates</strong>
+          <div className="debug-chip-list">
+            {graph.nodes.map((node) => (
+              <span key={node.id}>{node.kind}: {node.label}</span>
+            ))}
+          </div>
+        </article>
+        <article className="debug-card">
+          <strong>New memory relationship candidates</strong>
+          <div className="memory-edge-list">
+            {graph.edges.map((edge) => (
+              <div className="memory-edge-row" key={`${edge.from}-${edge.label}-${edge.to}`}>
+                <span>{graph.nodes.find((node) => node.id === edge.from)?.label ?? edge.from}</span>
+                <strong>{edge.label}</strong>
+                <span>{graph.nodes.find((node) => node.id === edge.to)?.label ?? edge.to}</span>
+              </div>
+            ))}
+          </div>
+        </article>
+      </div>
+    </div>
+  );
+}
+
 function getPatternStatus(evidenceStoreState: EvidenceStoreState, capabilityId: CapabilityId): PatternLearningStatus {
   return (
     evidenceStoreState.patternLearningStatusByCapability[capabilityId] ?? {
       capabilityId,
-      storedObserved: evidenceStoreState.storedCounts.total,
+      storedObserved: 0,
       eligibleApprovedCount: 0,
-      threshold: 3,
-      thresholdReached: false,
-      state: "waiting_for_threshold",
+      rejectedStoredCount: 0,
+      currentRunStage: 1,
+      learningMode: "none",
+      memoryAvailable: false,
+      negativeMemoryAvailable: false,
+      memoryReusedNextRun: false,
+      state: "baseline",
     }
   );
 }
 
 function patternSummary(status: PatternLearningStatus): string {
-  if (!status.thresholdReached) {
-    return `Waiting for threshold: ${status.storedObserved} of ${status.threshold} stored decisions`;
-  }
   if (status.state === "no_promotable_approval") {
-    return "Threshold reached, but no approved decision is available for promotion";
+    return `Run ${status.currentRunStage}: no approved decision is available for reusable memory`;
   }
-  if (status.promotedPatternId) {
-    return `Pattern promoted to enterprise memory from ${status.selectedEvidenceId}`;
+  if (status.currentRunStage === 1) {
+    return "Run 1 baseline";
   }
-  return "Threshold reached. Next approved decision can be promoted to enterprise memory";
+  if (status.currentRunStage === 2) {
+    return "Run 2 will change the context bundle using retrieval learning";
+  }
+  if (status.currentRunStage === 3) {
+    return status.memoryAvailable
+      ? `Run 3 writes enterprise memory from ${status.selectedEvidenceId ?? status.rejectedPatternId}`
+      : "Run 3 activates pattern learning";
+  }
+  if (status.memoryAvailable) {
+    return status.negativeMemoryAvailable
+      ? `Run 4 reuses rejection constraints from ${status.rejectedPatternId ?? status.selectedEvidenceId}`
+      : `Run 4 reuses enterprise memory from ${status.selectedEvidenceId}`;
+  }
+  return "Run 4 changes context again and reuses any stored memory if available";
 }
 
 function Metric({ icon, label, value }: { icon: ReactNode; label: string; value: string | number }) {

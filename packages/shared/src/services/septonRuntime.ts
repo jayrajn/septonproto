@@ -26,6 +26,8 @@ export function runSepton(question: string, selectedCapabilityId?: CapabilityId,
     learningSignals: [],
     patternArtifacts: contextBundle.appliedDecisionPatterns,
     retrievalHints: contextBundle.appliedRetrievalHints,
-    memorySnapshot: buildMemorySnapshot(knowledgeBase, learningState ?? { byCapability: {} }),
+    negativePatternArtifacts: contextBundle.appliedNegativeDecisionPatterns,
+    rejectedRetrievalHints: contextBundle.appliedRejectedRetrievalHints,
+    memorySnapshot: buildMemorySnapshot(knowledgeBase, learningState ?? { byCapability: {} }, intent.capabilityId),
   };
 }

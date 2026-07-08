@@ -181,9 +181,17 @@ export interface GraphPath {
   explanation: string;
 }
 
+export type RunStage = 1 | 2 | 3 | 4;
+export type LearningMode = "none" | "retrieval" | "retrieval_pattern" | "retrieval_memory";
+
 export interface ContextBundle {
   intent: DecisionIntent;
   capability: CapabilityContract;
+  currentRunStage: RunStage;
+  learningMode: LearningMode;
+  contextChanged: boolean;
+  memoryChangedThisRun: boolean;
+  memoryReusedThisRun: boolean;
   vectorHits: ContextHit[];
   graphPaths: GraphPath[];
   liveData: RawRecord[];
@@ -191,6 +199,8 @@ export interface ContextBundle {
   accessControl: AccessControlReport;
   appliedDecisionPatterns: DecisionPattern[];
   appliedRetrievalHints: ContextRetrievalHint[];
+  appliedNegativeDecisionPatterns: NegativeDecisionPattern[];
+  appliedRejectedRetrievalHints: ContextRetrievalHint[];
   retrievalTrace: string[];
 }
 
@@ -252,6 +262,7 @@ export interface DecisionPattern {
 export interface ContextRetrievalHint {
   id: string;
   capabilityId: CapabilityId;
+  learningSource: "approved" | "rejected";
   prioritizedContextTypes: ContextType[];
   boostedEntities: string[];
   deprioritizedContextTypes: ContextType[];
@@ -261,11 +272,24 @@ export interface ContextRetrievalHint {
   appliedInCurrentRun: boolean;
 }
 
+export interface NegativeDecisionPattern {
+  id: string;
+  capabilityId: CapabilityId;
+  title: string;
+  rejectedConditions: string[];
+  supportingEvidenceIds: string[];
+  blockedRecommendation: string;
+  rejectionEffect: "avoid" | "deprioritize" | "block_reuse";
+  writeBackTarget: string;
+  appliedInCurrentRun: boolean;
+}
+
 export interface EnterpriseMemorySnapshot {
   entities: GraphNode[];
   relationships: GraphEdge[];
   semanticMemory: VectorDocument[];
   decisionPatterns: DecisionPattern[];
+  negativeDecisionPatterns: NegativeDecisionPattern[];
 }
 
 export interface StoredEvidenceCounts {
@@ -278,17 +302,27 @@ export interface PatternLearningStatus {
   capabilityId: CapabilityId;
   storedObserved: number;
   eligibleApprovedCount: number;
-  threshold: number;
-  thresholdReached: boolean;
-  state: "waiting_for_threshold" | "no_promotable_approval" | "promoted_to_memory";
+  rejectedStoredCount: number;
+  currentRunStage: RunStage;
+  learningMode: LearningMode;
+  memoryAvailable: boolean;
+  negativeMemoryAvailable: boolean;
+  memoryReusedNextRun: boolean;
+  state: "baseline" | "retrieval_learning" | "pattern_learning" | "enterprise_memory_reuse" | "no_promotable_approval";
   selectedEvidenceId?: string;
   promotedPatternId?: string;
+  rejectedPatternId?: string;
 }
 
 export interface CapabilityLearningState {
+  storedOutcomeCount: number;
   approvedEvidenceIds: string[];
+  rejectedEvidenceIds: string[];
+  candidatePatterns: DecisionPattern[];
   patterns: DecisionPattern[];
-  retrievalHints: ContextRetrievalHint[];
+  negativePatterns: NegativeDecisionPattern[];
+  approvedRetrievalHints: ContextRetrievalHint[];
+  rejectedRetrievalHints: ContextRetrievalHint[];
 }
 
 export interface LearningState {
@@ -324,5 +358,7 @@ export interface SeptonRun {
   learningSignals: LearningSignal[];
   patternArtifacts: DecisionPattern[];
   retrievalHints: ContextRetrievalHint[];
+  negativePatternArtifacts: NegativeDecisionPattern[];
+  rejectedRetrievalHints: ContextRetrievalHint[];
   memorySnapshot: EnterpriseMemorySnapshot;
 }
