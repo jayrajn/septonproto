@@ -172,11 +172,46 @@ function runInventoryOptimizationWorkflow(bundle: ContextBundle): Recommendation
   const confidenceBoost = stage === 1 ? 0 : stage === 2 ? 0.03 : stage === 3 ? 0.06 : 0.09;
   const hasRejectedLearning =
     bundle.appliedRejectedRetrievalHints.length > 0 || bundle.appliedNegativeDecisionPatterns.length > 0;
+  const rejectionCount = Math.max(bundle.appliedRejectedRetrievalHints.length, bundle.appliedNegativeDecisionPatterns.length);
+  const rejectedPathVariant = Math.min(rejectionCount, 3);
+  const inventoryRejectionPlan =
+    rejectedPathVariant === 1
+      ? {
+          headline: `Hold the ${transferUnits.toLocaleString()} unit store-to-store transfer and cover Chicago South through Joliet DC replenishment first.`,
+          primaryCause: "Reviewer rejected the store-to-store transfer as the primary answer",
+          primaryImpact: `Septon is keeping the shortage evidence, but it has shifted the first action from Chicago North transfers to DC-directed replenishment.`,
+          demandCause: "Promotion demand still creates shortage risk",
+          demandImpact: `Breakfast demand is forecast to rise ${demandLift}% during the August promotion, so Chicago South still needs protection before launch.`,
+          firstAction: "Use Joliet DC as the first replenishment source for Chicago South and reserve store-to-store transfers only for locations below 3 days of supply.",
+          secondAction: "Add hourly stockout monitoring for Chicago South and trigger a smaller transfer only if DC replenishment cannot restore launch-week coverage.",
+          firstGuardrail: "Do not approve a broad Chicago North to Chicago South transfer unless DC replenishment cannot restore South coverage.",
+        }
+      : rejectedPathVariant === 2
+        ? {
+            headline: "Use a split-source shortage plan: DC replenishment first, targeted micro-transfers second, supplier expedite third.",
+            primaryCause: "Reviewer rejected the broad transfer path again",
+            primaryImpact: "Septon is now replacing the single-transfer recommendation with a staged recovery plan using multiple supply levers.",
+            demandCause: "Promotion demand still requires launch-week protection",
+            demandImpact: `Demand is still expected to rise ${demandLift}%, but the recommendation now uses DC capacity and supplier expedite before store transfers.`,
+            firstAction: "Allocate Joliet DC stock to the highest-risk Chicago South stores, then use micro-transfers only for stores still below target coverage.",
+            secondAction: "Request a supplier expedite window for the August promotion so the South cluster is not dependent on North excess inventory.",
+            firstGuardrail: "Do not use one bulk transfer as the primary mitigation after repeated reviewer rejection.",
+          }
+        : {
+            headline: "Switch to a launch-control plan: limit promotion exposure in short stores until replenishment and supplier coverage are confirmed.",
+            primaryCause: "Reviewer rejected the inventory transfer path multiple times",
+            primaryImpact: "Septon is now changing the decision from moving inventory to controlling promotion risk where inventory coverage is weak.",
+            demandCause: "Demand lift still needs to be managed",
+            demandImpact: `The ${demandLift}% demand lift remains valid, but Septon is using promotion controls and replenishment gates instead of another transfer recommendation.`,
+            firstAction: "Throttle August promotion exposure for Chicago South stores below target days of supply until DC replenishment or supplier expedite clears.",
+            secondAction: "Open a daily launch-control review across Supply Chain, Marketing, and Operations for stores below inventory threshold.",
+            firstGuardrail: "Do not expand promotion exposure in shortage stores until replenishment coverage is confirmed.",
+          };
 
   return {
     headline:
       hasRejectedLearning
-        ? `Avoid repeating the rejected transfer-first plan. Re-evaluate Chicago inventory using a different shortage prevention path before moving ${transferUnits.toLocaleString()} units.`
+        ? inventoryRejectionPlan.headline
         : stage === 1
         ? `Move ${transferUnits.toLocaleString()} egg patty units from Chicago North to Chicago South before the August promotion.`
         : stage === 2
@@ -187,21 +222,21 @@ function runInventoryOptimizationWorkflow(bundle: ContextBundle): Recommendation
     rootCauses: [
       {
         cause: hasRejectedLearning
-          ? "Rejected transfer-first path requires an alternate stock plan"
+          ? inventoryRejectionPlan.primaryCause
           : "Inventory imbalance across Chicago store clusters",
         impact: hasRejectedLearning
-          ? `The prior transfer-first recommendation was rejected, so Septon is keeping the imbalance evidence but requiring an alternate shortage prevention option before repeating the same move.`
+          ? inventoryRejectionPlan.primaryImpact
           : `Chicago North has ${excessUnits.toLocaleString()} excess units while Chicago South is short ${shortageUnits.toLocaleString()} units.`,
         evidence: `${north?.source}: ${north?.title}. ${south?.source}: ${south?.title}.`,
         confidence: hasRejectedLearning ? 0.81 : stage >= 3 ? 0.93 : stage === 2 ? 0.91 : 0.9,
       },
       {
         cause: hasRejectedLearning
-          ? "Demand risk still exists, but the transfer answer is constrained"
+          ? inventoryRejectionPlan.demandCause
           : "Expected promotion demand increases shortage risk",
         impact:
           hasRejectedLearning
-            ? `Breakfast demand is forecast to rise ${demandLift}% during the August promotion, but Septon is suppressing the previously rejected transfer-first framing and forcing a different inventory recommendation path.`
+            ? inventoryRejectionPlan.demandImpact
             : stage === 1
             ? `Breakfast demand is forecast to rise ${demandLift}% during the August promotion, with Chicago South marked as the highest risk cluster.`
             : stage === 2
@@ -223,7 +258,7 @@ function runInventoryOptimizationWorkflow(bundle: ContextBundle): Recommendation
       {
         action:
           hasRejectedLearning
-            ? "Validate an alternative shortage prevention plan before approving another Chicago North to Chicago South transfer."
+            ? inventoryRejectionPlan.firstAction
             : stage === 1
             ? `Transfer ${transferUnits.toLocaleString()} egg patty units from Chicago North stores to Chicago South stores.`
             : stage === 2
@@ -238,7 +273,7 @@ function runInventoryOptimizationWorkflow(bundle: ContextBundle): Recommendation
       {
         action:
           hasRejectedLearning
-            ? "Tighten launch-week shortage monitoring and require a second inventory option if the same transfer-first recommendation would be repeated."
+            ? inventoryRejectionPlan.secondAction
             : stage === 1
             ? "Pause Chicago North replenishment until days of supply returns to target."
             : stage === 2
@@ -266,7 +301,7 @@ function runInventoryOptimizationWorkflow(bundle: ContextBundle): Recommendation
     ],
     augustPromotionGuardrails: [
       hasRejectedLearning
-        ? "Do not reuse the previously rejected transfer-first inventory plan without a materially different shortage mitigation path."
+        ? inventoryRejectionPlan.firstGuardrail
         : stage >= 3
         ? `Transfer ${transferUnits.toLocaleString()} units before demand rises, not after launch-day shortages begin.`
         : stage === 2

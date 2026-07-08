@@ -316,17 +316,17 @@ function buildRejectedLearningArtifacts(evidence: DecisionEvidencePackage): Lear
       boostedEntities: ["Chicago North", "Chicago South", "Joliet DC"],
       deprioritizedContextTypes: ["meeting_note", "weather"],
       supportingEvidenceIds,
-      explanation: "Septon recorded that the rejected inventory path over-weighted this transfer setup and should avoid leading with the same context mix next time.",
-      futureUse: "Next time Septon will suppress similar transfer-first context emphasis and look for an alternative inventory path earlier in the run.",
+      explanation: "Septon recorded that the reviewer rejected a broad Chicago North to Chicago South transfer as the lead recommendation.",
+      futureUse: "Next time Septon will shift toward DC replenishment, supplier expedite, promotion controls, or smaller targeted moves before proposing another bulk transfer.",
       appliedInCurrentRun: false,
     };
 
     const negativePattern: NegativeDecisionPattern = {
       id: `NPAT-${evidence.id}`,
       capabilityId: evidence.capabilityId,
-      title: "Avoid repeating the rejected transfer-first inventory path",
+      title: "Reviewer rejected broad Chicago inventory transfer path",
       rejectedConditions: [
-        "Transfer-first recommendation was rejected",
+        "Broad transfer recommendation was rejected",
         "Same Chicago North to Chicago South rebalancing path was proposed without enough alternative checks",
         "Demand and transfer context alone should not dominate the next recommendation",
       ],

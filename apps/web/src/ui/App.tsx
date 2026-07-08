@@ -39,8 +39,6 @@ import {
   createEmptyEvidenceStoreState,
   createEmptyLearningState,
   getCapabilityLearningState,
-  getCurrentRunStage,
-  getRunLearningMode,
   storeDecisionOutcome,
 } from "../../../../packages/shared/src/services/learningServices";
 import { runSepton } from "../../../../packages/shared/src/services/septonRuntime";
@@ -158,7 +156,6 @@ export function App() {
     if (!run) return;
     const rejectedEvidence = rejectEvidencePackage(run.evidence);
     const learningArtifacts = storeDecisionOutcome(rejectedEvidence, run.knowledgeBase, learningState, evidenceStoreState);
-    const revisedRun = runSepton(question, run.intent.capabilityId, learningArtifacts.learningState);
     const rejectedRun = {
       ...run,
       evidence: rejectedEvidence,
@@ -169,15 +166,10 @@ export function App() {
       rejectedRetrievalHints: learningArtifacts.rejectedRetrievalHints,
       memorySnapshot: learningArtifacts.memorySnapshot,
     };
-    const nextRun = {
-      ...revisedRun,
-      learningSignals: learningArtifacts.learningSignals,
-    };
     setLearningState(learningArtifacts.learningState);
     setEvidenceStoreState(learningArtifacts.evidenceStoreState);
-    setRun(nextRun);
-    setRunCount((count) => count + 1);
-    setRunHistoryByCapability((history) => appendRunSnapshot(replaceLatestRunSnapshot(history, rejectedRun), nextRun));
+    setRun(rejectedRun);
+    setRunHistoryByCapability((history) => replaceLatestRunSnapshot(history, rejectedRun));
   }
 
   function resetDecision() {
@@ -742,9 +734,9 @@ function TopLearningSnapshots({
   selectedCapabilityId: CapabilityId | null;
 }) {
   const activeCapabilityId = selectedCapabilityId ?? "root_cause_analysis";
-  const currentStage = run?.contextBundle.currentRunStage ?? getCurrentRunStage(learningState, activeCapabilityId);
+  const currentStage = run?.contextBundle.currentRunStage ?? 0;
   const activeStatus = getPatternStatus(evidenceStoreState, activeCapabilityId);
-  const currentMode = run?.contextBundle.learningMode ?? getRunLearningMode(learningState, activeCapabilityId);
+  const currentMode = run?.contextBundle.learningMode ?? "none";
   const capabilityState = getCapabilityLearningState(learningState, activeCapabilityId);
 
   return (
