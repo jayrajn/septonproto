@@ -46,6 +46,12 @@ pnpm db:seed:memory
 
 Then re-check the memory summary to see raw records, entities, relationships, documents, and candidate patterns.
 
+Check the batch write path with one accepted demo batch and one rejected demo batch:
+
+```bash
+pnpm db:check:batch-write
+```
+
 ## MVP Mapping
 
 - `ingestion_batches`: batch files, exports, and S3/file landing-zone drops.
